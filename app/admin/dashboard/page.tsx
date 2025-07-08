@@ -1,189 +1,57 @@
-"use client"
-
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
+import { redirect } from "next/navigation"
+import { getAdminSession } from "@/lib/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Edit, Trash2, Bed, Calendar, LogOut, Hotel } from "lucide-react"
-import type { Room, Booking } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase"
+import { Bed, Users, Calendar, DollarSign, Plus, Settings, TestTube } from "lucide-react"
+import { LogoutButton } from "@/components/logout-button"
+import Link from "next/link"
 
-export default function AdminDashboard() {
-  const [rooms, setRooms] = useState<Room[]>([])
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [isAddRoomOpen, setIsAddRoomOpen] = useState(false)
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
-  const router = useRouter()
+async function getStats() {
+  const [habitacionesResult, reservasResult, reservasHoyResult] = await Promise.all([
+    supabase.from("habitaciones").select("*"),
+    supabase.from("reservas").select("*"),
+    supabase
+      .from("reservas")
+      .select("*")
+      .lte("fecha_checkin", new Date().toISOString().split("T")[0])
+      .gte("fecha_checkout", new Date().toISOString().split("T")[0])
+      .in("estado", ["confirmada", "checkin"]),
+  ])
 
-  // Estado para el formulario de habitación
-  const [roomForm, setRoomForm] = useState({
-    name: "",
-    description: "",
-    price: "",
-    capacity: "",
-    size: "",
-    amenities: "",
-    image_url: "",
-    is_available: true,
-  })
+  const habitaciones = habitacionesResult.data || []
+  const reservas = reservasResult.data || []
+  const reservasHoy = reservasHoyResult.data || []
 
-  useEffect(() => {
-    // Verificar autenticación
-    const token = localStorage.getItem("adminToken")
-    if (!token) {
-      router.push("/admin/login")
-      return
-    }
+  const habitacionesDisponibles = habitaciones.filter((h) => h.estado === "disponible").length
+  const habitacionesOcupadas = reservasHoy.length
+  const ingresosMes = reservas
+    .filter((r) => {
+      const fecha = new Date(r.created_at)
+      const ahora = new Date()
+      return fecha.getMonth() === ahora.getMonth() && fecha.getFullYear() === ahora.getFullYear()
+    })
+    .reduce((sum, r) => sum + r.total, 0)
 
-    loadData()
-  }, [router])
+  return {
+    totalHabitaciones: habitaciones.length,
+    habitacionesDisponibles,
+    habitacionesOcupadas,
+    totalReservas: reservas.length,
+    reservasHoy: reservasHoy.length,
+    ingresosMes,
+  }
+}
 
-  const loadData = async () => {
-    try {
-      const [roomsResponse, bookingsResponse] = await Promise.all([
-        fetch("/api/admin/rooms"),
-        fetch("/api/admin/bookings"),
-      ])
+export default async function AdminDashboard() {
+  const session = await getAdminSession()
 
-      if (roomsResponse.ok) {
-        const roomsData = await roomsResponse.json()
-        setRooms(roomsData)
-      }
-
-      if (bookingsResponse.ok) {
-        const bookingsData = await bookingsResponse.json()
-        setBookings(bookingsData)
-      }
-    } catch (error) {
-      setError("Error al cargar los datos")
-    } finally {
-      setLoading(false)
-    }
+  if (!session) {
+    redirect("/admin/login")
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminToken")
-    router.push("/admin/login")
-  }
-
-  const handleAddRoom = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const response = await fetch("/api/admin/rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-        },
-        body: JSON.stringify({
-          ...roomForm,
-          price: Number.parseFloat(roomForm.price),
-          capacity: Number.parseInt(roomForm.capacity),
-          amenities: roomForm.amenities.split(",").map((a) => a.trim()),
-        }),
-      })
-
-      if (response.ok) {
-        setIsAddRoomOpen(false)
-        setRoomForm({
-          name: "",
-          description: "",
-          price: "",
-          capacity: "",
-          size: "",
-          amenities: "",
-          image_url: "",
-          is_available: true,
-        })
-        loadData()
-      } else {
-        setError("Error al agregar habitación")
-      }
-    } catch (error) {
-      setError("Error de conexión")
-    }
-  }
-
-  const handleToggleAvailability = async (roomId: string, isAvailable: boolean) => {
-    try {
-      const response = await fetch(`/api/admin/rooms/${roomId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-        },
-        body: JSON.stringify({ is_available: !isAvailable }),
-      })
-
-      if (response.ok) {
-        loadData()
-      } else {
-        setError("Error al actualizar habitación")
-      }
-    } catch (error) {
-      setError("Error de conexión")
-    }
-  }
-
-  const handleDeleteRoom = async (roomId: string) => {
-    if (!confirm("¿Está seguro de que desea eliminar esta habitación?")) return
-
-    try {
-      const response = await fetch(`/api/admin/rooms/${roomId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-        },
-      })
-
-      if (response.ok) {
-        loadData()
-      } else {
-        setError("Error al eliminar habitación")
-      }
-    } catch (error) {
-      setError("Error de conexión")
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando panel de administración...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const stats = {
-    totalRooms: rooms.length,
-    availableRooms: rooms.filter((r) => r.is_available).length,
-    occupiedRooms: rooms.filter((r) => !r.is_available).length,
-    totalBookings: bookings.length,
-    pendingBookings: bookings.filter((b) => b.status === "pending").length,
-    revenue: bookings.filter((b) => b.status === "confirmed").reduce((sum, b) => sum + (b.total_amount || 0), 0),
-  }
+  const stats = await getStats()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -192,29 +60,23 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Hotel className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <Bed className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Panel de Administración</h1>
-                <p className="text-sm text-gray-500">Hotel Emaus</p>
+                <h1 className="text-2xl font-bold text-gray-900">Hotel Emaús</h1>
+                <p className="text-sm text-gray-600">Panel de Administración</p>
               </div>
             </div>
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Cerrar Sesión
-            </Button>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">Bienvenido, {session.username}</span>
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
@@ -223,244 +85,153 @@ export default function AdminDashboard() {
               <Bed className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalRooms}</div>
+              <div className="text-2xl font-bold">{stats.totalHabitaciones}</div>
+              <p className="text-xs text-muted-foreground">{stats.habitacionesDisponibles} disponibles</p>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Habitaciones Disponibles</CardTitle>
-              <Bed className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-sm font-medium">Ocupadas Hoy</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.availableRooms}</div>
+              <div className="text-2xl font-bold">{stats.habitacionesOcupadas}</div>
+              <p className="text-xs text-muted-foreground">
+                {((stats.habitacionesOcupadas / stats.totalHabitaciones) * 100).toFixed(1)}% ocupación
+              </p>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Habitaciones Ocupadas</CardTitle>
-              <Bed className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.occupiedRooms}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Reservas Pendientes</CardTitle>
+              <CardTitle className="text-sm font-medium">Reservas Total</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.pendingBookings}</div>
+              <div className="text-2xl font-bold">{stats.totalReservas}</div>
+              <p className="text-xs text-muted-foreground">{stats.reservasHoy} para hoy</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ingresos del Mes</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">${stats.ingresosMes.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground">Este mes</p>
             </CardContent>
           </Card>
         </div>
 
-        <Tabs defaultValue="rooms" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="rooms">Gestión de Habitaciones</TabsTrigger>
-            <TabsTrigger value="bookings">Reservas</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="rooms" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Habitaciones</h2>
-              <Dialog open={isAddRoomOpen} onOpenChange={setIsAddRoomOpen}>
-                <DialogTrigger asChild>
-                  <Button>
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Gestión de Habitaciones</CardTitle>
+              <CardDescription>Administra las habitaciones del hotel</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span>Habitaciones disponibles</span>
+                <Badge variant="secondary">{stats.habitacionesDisponibles}</Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Habitaciones ocupadas</span>
+                <Badge variant="destructive">{stats.habitacionesOcupadas}</Badge>
+              </div>
+              <div className="flex space-x-2">
+                <Button asChild className="flex-1">
+                  <Link href="/admin/habitaciones">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Gestionar
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/admin/habitaciones/nueva">
                     <Plus className="w-4 h-4 mr-2" />
-                    Agregar Habitación
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Agregar Nueva Habitación</DialogTitle>
-                    <DialogDescription>Complete los datos de la nueva habitación</DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleAddRoom} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Nombre</Label>
-                      <Input
-                        id="name"
-                        value={roomForm.name}
-                        onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Descripción</Label>
-                      <Textarea
-                        id="description"
-                        value={roomForm.description}
-                        onChange={(e) => setRoomForm({ ...roomForm, description: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="price">Precio por noche</Label>
-                        <Input
-                          id="price"
-                          type="number"
-                          step="0.01"
-                          value={roomForm.price}
-                          onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="capacity">Capacidad</Label>
-                        <Input
-                          id="capacity"
-                          type="number"
-                          value={roomForm.capacity}
-                          onChange={(e) => setRoomForm({ ...roomForm, capacity: e.target.value })}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="size">Tamaño</Label>
-                      <Input
-                        id="size"
-                        placeholder="ej: 25 m²"
-                        value={roomForm.size}
-                        onChange={(e) => setRoomForm({ ...roomForm, size: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="amenities">Comodidades (separadas por comas)</Label>
-                      <Textarea
-                        id="amenities"
-                        placeholder="WiFi gratuito, TV por cable, Aire acondicionado"
-                        value={roomForm.amenities}
-                        onChange={(e) => setRoomForm({ ...roomForm, amenities: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="image_url">URL de la imagen</Label>
-                      <Input
-                        id="image_url"
-                        type="url"
-                        value={roomForm.image_url}
-                        onChange={(e) => setRoomForm({ ...roomForm, image_url: e.target.value })}
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit">Agregar Habitación</Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
+                    Nueva
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-            <div className="grid gap-6">
-              {rooms.map((room) => (
-                <Card key={room.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          {room.name}
-                          <Badge variant={room.is_available ? "default" : "destructive"}>
-                            {room.is_available ? "Disponible" : "Ocupada"}
-                          </Badge>
-                        </CardTitle>
-                        <CardDescription>{room.description}</CardDescription>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={room.is_available}
-                          onCheckedChange={() => handleToggleAvailability(room.id, room.is_available)}
-                        />
-                        <Button variant="outline" size="sm">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteRoom(room.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Precio:</span>
-                        <p>${room.price}/noche</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Capacidad:</span>
-                        <p>{room.capacity} huéspedes</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Tamaño:</span>
-                        <p>{room.size}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Comodidades:</span>
-                        <p>{room.amenities.length} servicios</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
+          <Card>
+            <CardHeader>
+              <CardTitle>Gestión de Reservas</CardTitle>
+              <CardDescription>Administra las reservas de los huéspedes</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span>Reservas activas</span>
+                <Badge variant="secondary">{stats.reservasHoy}</Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Total reservas</span>
+                <Badge variant="outline">{stats.totalReservas}</Badge>
+              </div>
+              <div className="flex space-x-2">
+                <Button asChild className="flex-1">
+                  <Link href="/admin/reservas">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    Gestionar
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/admin/reservas/nueva">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nueva
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-          <TabsContent value="bookings" className="space-y-6">
-            <h2 className="text-2xl font-bold">Reservas</h2>
-            <div className="grid gap-4">
-              {bookings.map((booking) => (
-                <Card key={booking.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle>{booking.guest_name}</CardTitle>
-                        <CardDescription>{booking.guest_email}</CardDescription>
-                      </div>
-                      <Badge
-                        variant={
-                          booking.status === "confirmed"
-                            ? "default"
-                            : booking.status === "pending"
-                              ? "secondary"
-                              : "destructive"
-                        }
-                      >
-                        {booking.status === "confirmed"
-                          ? "Confirmada"
-                          : booking.status === "pending"
-                            ? "Pendiente"
-                            : "Cancelada"}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Check-in:</span>
-                        <p>{new Date(booking.check_in).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Check-out:</span>
-                        <p>{new Date(booking.check_out).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Huéspedes:</span>
-                        <p>{booking.guests_count}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">Total:</span>
-                        <p>${booking.total_amount}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+        {/* Enlaces rápidos */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Enlaces Rápidos</CardTitle>
+            <CardDescription>Accesos directos a funciones importantes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Button asChild variant="outline" className="h-auto p-4 flex-col space-y-2 bg-transparent">
+                <Link href="/">
+                  <Bed className="w-6 h-6" />
+                  <span className="text-sm">Ver Sitio Web</span>
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto p-4 flex-col space-y-2 bg-transparent">
+                <Link href="/admin/habitaciones">
+                  <Settings className="w-6 h-6" />
+                  <span className="text-sm">Habitaciones</span>
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto p-4 flex-col space-y-2 bg-transparent">
+                <Link href="/admin/reservas">
+                  <Calendar className="w-6 h-6" />
+                  <span className="text-sm">Reservas</span>
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto p-4 flex-col space-y-2 bg-transparent">
+                <Link href="/admin/test">
+                  <DollarSign className="w-6 h-6" />
+                  <span className="text-sm">Diagnóstico</span>
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto p-4 flex-col space-y-2 bg-transparent">
+                <Link href="/admin/test-delete">
+                  <TestTube className="w-6 h-6" />
+                  <span className="text-sm">Prueba Modal</span>
+                </Link>
+              </Button>
             </div>
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
