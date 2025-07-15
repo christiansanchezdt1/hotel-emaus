@@ -1,215 +1,358 @@
 "use client"
 
+import { useState } from "react"
+import { useHabitacionesDisponibles } from "@/hooks/use-habitaciones-disponibles"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useHabitacionesDisponibles, type Habitacion } from "@/hooks/use-habitaciones-disponibles"
-import { Bed, Star, Users, Wifi, Car, Coffee, Utensils, Shield, Clock } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Calendar,
+  Users,
+  Wifi,
+  Car,
+  Coffee,
+  Tv,
+  Bath,
+  Wind,
+  Star,
+  MapPin,
+  Phone,
+  Loader2,
+  AlertCircle,
+  Search,
+} from "lucide-react"
 
-const amenidadIcons: Record<string, any> = {
-  wifi: Wifi,
-  estacionamiento: Car,
-  desayuno: Coffee,
-  restaurante: Utensils,
-  seguridad: Shield,
-  recepcion_24h: Clock,
-}
+export function HabitacionesDisponibles() {
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>("")
+  const { habitaciones, loading, error, total, warning, debug } = useHabitacionesDisponibles(fechaSeleccionada)
 
-interface HabitacionesDisponiblesProps {
-  fecha?: string
-}
+  const today = new Date().toISOString().split("T")[0]
 
-// Función para formatear precios en pesos argentinos
-const formatearPrecioARS = (precio: number) => {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(precio)
-}
-
-export default function HabitacionesDisponibles({ fecha }: HabitacionesDisponiblesProps) {
-  const { data, loading, error } = useHabitacionesDisponibles(fecha)
-
-  if (loading) {
-    return (
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {[...Array(6)].map((_, index) => (
-          <Card key={index} className="overflow-hidden">
-            <Skeleton className="aspect-[4/3] w-full" />
-            <CardHeader>
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                {[...Array(4)].map((_, i) => (
-                  <Skeleton key={i} className="h-4 w-full" />
-                ))}
-              </div>
-              <Skeleton className="h-10 w-full" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    )
+  const formatearPrecio = (precio: number) => {
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      minimumFractionDigits: 0,
+    }).format(precio)
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <div className="text-red-500 mb-4">
-          <p className="text-lg font-semibold">Error al cargar habitaciones</p>
-          <p className="text-sm">{error}</p>
-        </div>
-        <Button onClick={() => window.location.reload()} variant="outline">
-          Intentar de nuevo
-        </Button>
-      </div>
-    )
-  }
+  const getAmenidadesIconos = (amenidades: string[] | null) => {
+    if (!amenidades) return []
 
-  if (!data || data.habitaciones.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <Bed className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-gray-600 mb-2">No hay habitaciones disponibles</h3>
-        <p className="text-gray-500">Para la fecha seleccionada: {data?.fecha || "hoy"}</p>
-        <p className="text-sm text-gray-400 mt-2">Intenta con otra fecha o contacta con recepción</p>
-      </div>
-    )
+    const iconMap: { [key: string]: any } = {
+      WiFi: Wifi,
+      TV: Tv,
+      "Baño privado": Bath,
+      "Aire acondicionado": Wind,
+      Estacionamiento: Car,
+      Desayuno: Coffee,
+    }
+
+    return amenidades.map((amenidad) => ({
+      nombre: amenidad,
+      Icon: iconMap[amenidad] || Star,
+    }))
   }
 
   const getTipoColor = (tipo: string) => {
     switch (tipo.toLowerCase()) {
-      case "individual":
       case "simple":
-        return "from-blue-500 to-cyan-500"
+        return "bg-blue-100 text-blue-800 border-blue-200"
       case "doble":
-      case "matrimonial":
-        return "from-purple-500 to-pink-500"
+        return "bg-green-100 text-green-800 border-green-200"
+      case "triple":
+        return "bg-purple-100 text-purple-800 border-purple-200"
       case "suite":
-      case "familiar":
-        return "from-orange-500 to-red-500"
+        return "bg-amber-100 text-amber-800 border-amber-200"
       default:
-        return "from-gray-500 to-gray-600"
+        return "bg-gray-100 text-gray-800 border-gray-200"
     }
   }
 
-  const getMostPopular = (habitaciones: Habitacion[]) => {
-    // Lógica simple: la habitación doble/matrimonial más barata
-    const doblesOrdenadas = habitaciones
-      .filter((h) => h.tipo.toLowerCase().includes("doble") || h.tipo.toLowerCase().includes("matrimonial"))
-      .sort((a, b) => a.precio - b.precio)
-
-    return doblesOrdenadas.length > 0 ? doblesOrdenadas[0].id : null
+  const esHabitacionPopular = (habitacion: any) => {
+    return habitacion.tipo.toLowerCase() === "doble" || habitacion.precio < 15000
   }
 
-  const mostPopularId = getMostPopular(data.habitaciones)
-
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">
-          {data.total} habitaciones disponibles para {new Date(data.fecha).toLocaleDateString("es-ES")}
-        </Badge>
-      </div>
+    <div className="py-16 px-4">
+      <div className="container mx-auto">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold mb-4">
+            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              Habitaciones Disponibles
+            </span>
+          </h2>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
+            Descubre nuestras cómodas habitaciones diseñadas para tu descanso y bienestar
+          </p>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {data.habitaciones.map((habitacion) => {
-          const isPopular = habitacion.id === mostPopularId
-          const tipoColor = getTipoColor(habitacion.tipo)
+          {/* Filtro de Fecha */}
+          <Card className="max-w-md mx-auto mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Consultar Disponibilidad
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="fecha" className="text-sm font-medium text-gray-700">
+                  Fecha de consulta
+                </Label>
+                <Input
+                  id="fecha"
+                  type="date"
+                  value={fechaSeleccionada}
+                  onChange={(e) => setFechaSeleccionada(e.target.value)}
+                  min={today}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setFechaSeleccionada(today)}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Consultar Hoy
+                </Button>
+                {fechaSeleccionada && (
+                  <Button variant="outline" onClick={() => setFechaSeleccionada("")} className="border-gray-300">
+                    Limpiar
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-          return (
-            <Card
-              key={habitacion.id}
-              className={`relative overflow-hidden hover:shadow-2xl transition-all duration-300 border-0 ${
-                isPopular ? "ring-2 ring-purple-500 scale-105" : ""
-              }`}
-            >
-              {isPopular && (
-                <div className="absolute top-4 right-4 z-10">
-                  <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">Más Popular</Badge>
-                </div>
-              )}
+        {/* Debug Info (solo en desarrollo) */}
+        {process.env.NODE_ENV === "development" && debug && (
+          <Card className="mb-8 bg-gray-50 border-gray-200">
+            <CardHeader>
+              <CardTitle className="text-sm text-gray-600">Debug Info</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-gray-500">
+              <pre>{JSON.stringify(debug, null, 2)}</pre>
+            </CardContent>
+          </Card>
+        )}
 
-              <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative">
-                <div className="text-center space-y-2">
-                  <Bed className="w-12 h-12 text-gray-500 mx-auto" />
-                  <p className="text-gray-500 text-sm">Habitación {habitacion.numero}</p>
-                </div>
-                <div className="absolute top-4 left-4">
-                  <Badge variant="secondary" className="bg-white/80">
-                    #{habitacion.numero}
-                  </Badge>
+        {/* Estados de Loading y Error */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+              <p className="text-gray-600">Cargando habitaciones disponibles...</p>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <Card className="mb-8 bg-red-50 border-red-200">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+                <div>
+                  <h3 className="font-semibold text-red-800">Error al cargar habitaciones</h3>
+                  <p className="text-red-600">{error}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
 
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-2xl font-bold text-gray-800">{habitacion.tipo}</CardTitle>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <div className="flex items-center space-x-1">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        ))}
-                      </div>
-                      <div className="flex items-center space-x-1 text-gray-600">
-                        <Users className="w-4 h-4" />
-                        <span className="text-sm">{habitacion.capacidad} personas</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-2xl font-bold bg-gradient-to-r ${tipoColor} bg-clip-text text-transparent`}>
-                      {formatearPrecioARS(habitacion.precio)}
-                    </div>
-                    <div className="text-sm text-gray-500">por noche</div>
-                  </div>
+        {warning && (
+          <Card className="mb-8 bg-yellow-50 border-yellow-200">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-yellow-600" />
+                <div>
+                  <h3 className="font-semibold text-yellow-800">Advertencia</h3>
+                  <p className="text-yellow-600">{warning}</p>
                 </div>
-              </CardHeader>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-              <CardContent className="space-y-4">
-                {habitacion.descripcion && (
-                  <p className="text-gray-600 text-sm leading-relaxed">{habitacion.descripcion}</p>
+        {/* Información de Consulta */}
+        {!loading && (
+          <div className="text-center mb-8">
+            <p className="text-gray-600">
+              {fechaSeleccionada ? (
+                <>
+                  Mostrando <span className="font-semibold text-blue-600">{total}</span> habitaciones disponibles para
+                  el{" "}
+                  <span className="font-semibold">
+                    {new Date(fechaSeleccionada + "T00:00:00").toLocaleDateString("es-AR")}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Mostrando <span className="font-semibold text-blue-600">{total}</span> habitaciones disponibles
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Grid de Habitaciones */}
+        {!loading && habitaciones.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {habitaciones.map((habitacion) => (
+              <Card
+                key={habitacion.id}
+                className="group bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 relative overflow-hidden"
+              >
+                {esHabitacionPopular(habitacion) && (
+                  <Badge className="absolute top-4 right-4 z-10 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                    ⭐ Más Popular
+                  </Badge>
                 )}
 
-                <div className="space-y-2">
-                  {habitacion.amenidades && habitacion.amenidades.length > 0 ? (
-                    habitacion.amenidades.map((amenidad, index) => {
-                      const IconComponent = amenidadIcons[amenidad] || Bed
-                      return (
-                        <div key={index} className="flex items-center space-x-2">
-                          <IconComponent className="w-4 h-4 text-gray-500" />
-                          <span className="text-gray-600 text-sm capitalize">{amenidad.replace("_", " ")}</span>
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"></div>
-                      <span className="text-gray-600">Amenidades básicas incluidas</span>
+                <div className="aspect-[4/3] bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center relative">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-white font-bold text-xl">{habitacion.numero}</span>
                     </div>
-                  )}
+                    <p className="text-gray-600 font-medium">Habitación {habitacion.numero}</p>
+                  </div>
                 </div>
 
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge className={`${getTipoColor(habitacion.tipo)} border`}>{habitacion.tipo}</Badge>
+                    <div className="flex items-center gap-1">
+                      <Users className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm text-gray-600">{habitacion.capacidad} personas</span>
+                    </div>
+                  </div>
+
+                  <h3 className="text-xl font-semibold text-gray-800 mb-2">Habitación {habitacion.tipo}</h3>
+
+                  {habitacion.descripcion && (
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{habitacion.descripcion}</p>
+                  )}
+
+                  {/* Amenidades */}
+                  {habitacion.amenidades && habitacion.amenidades.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Incluye:</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {getAmenidadesIconos(habitacion.amenidades).map((amenidad, index) => (
+                          <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-3 py-1">
+                            <amenidad.Icon className="h-3 w-3 text-gray-600" />
+                            <span className="text-xs text-gray-600">{amenidad.nombre}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Precio y Botón */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <div>
+                      <div className="text-2xl font-bold text-gray-800">{formatearPrecio(habitacion.precio)}</div>
+                      <div className="text-sm text-gray-500">por noche</div>
+                    </div>
+                    <Button
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                      onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
+                    >
+                      <Phone className="h-4 w-4 mr-2" />
+                      Reservar
+                    </Button>
+                  </div>
+
+                  {/* Calificación */}
+                  <div className="flex items-center justify-center mt-4 pt-4 border-t border-gray-100">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      ))}
+                      <span className="text-sm text-gray-600 ml-2">5.0 (Excelente)</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Estado Vacío */}
+        {!loading && habitaciones.length === 0 && !error && (
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardContent className="p-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                {fechaSeleccionada ? "No hay habitaciones disponibles" : "Selecciona una fecha"}
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {fechaSeleccionada
+                  ? "No encontramos habitaciones disponibles para la fecha seleccionada. Prueba con otra fecha."
+                  : "Selecciona una fecha para ver las habitaciones disponibles."}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
-                  className={`w-full ${
-                    isPopular
-                      ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                      : `bg-gradient-to-r ${tipoColor} hover:opacity-90`
-                  } text-white rounded-xl transition-all duration-300`}
+                  onClick={() => setFechaSeleccionada("")}
+                  variant="outline"
+                  className="border-blue-200 text-blue-600 hover:bg-blue-50"
                 >
-                  Reservar Habitación {habitacion.numero}
+                  Ver Todas las Habitaciones
                 </Button>
+                <Button
+                  onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
+                  className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
+                >
+                  <Phone className="h-4 w-4 mr-2" />
+                  Contactar por WhatsApp
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Información Adicional */}
+        {!loading && habitaciones.length > 0 && (
+          <div className="mt-12 text-center">
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-0">
+              <CardContent className="p-8">
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">¿Necesitas ayuda con tu reserva?</h3>
+                <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+                  Nuestro equipo está disponible 24/7 para ayudarte a encontrar la habitación perfecta y resolver todas
+                  tus dudas.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button
+                    size="lg"
+                    onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
+                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
+                  >
+                    <Phone className="h-5 w-5 mr-2" />
+                    WhatsApp: +54 387 550-5939
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => window.open("mailto:hotelcasadeemaus@gmail.com", "_blank")}
+                    className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                  >
+                    <MapPin className="h-5 w-5 mr-2" />
+                    hotelcasadeemaus@gmail.com
+                  </Button>
+                </div>
               </CardContent>
             </Card>
-          )
-        })}
+          </div>
+        )}
       </div>
     </div>
   )
 }
+
+export default HabitacionesDisponibles

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, Calendar, User, Mail, Phone, DollarSign } from "lucide-react"
+import { ArrowLeft, Calendar, User, Mail, Phone, DollarSign, CreditCard } from "lucide-react"
 import Link from "next/link"
 
 interface Habitacion {
@@ -31,11 +31,68 @@ export default function NuevaReserva() {
     cliente_nombre: "",
     cliente_email: "",
     cliente_telefono: "",
+    cliente_documento: "",
+    tipo_documento: "DNI",
+    nacionalidad: "Argentina",
     fecha_checkin: "",
     fecha_checkout: "",
     estado: "confirmada",
     total: 0,
   })
+
+  // Lista de países
+  const paises = [
+    "Argentina",
+    "Brasil",
+    "Chile",
+    "Uruguay",
+    "Paraguay",
+    "Bolivia",
+    "Perú",
+    "Colombia",
+    "Ecuador",
+    "Venezuela",
+    "México",
+    "Estados Unidos",
+    "Canadá",
+    "España",
+    "Francia",
+    "Italia",
+    "Alemania",
+    "Reino Unido",
+    "Portugal",
+    "Otro",
+  ]
+
+  // Detectar automáticamente el tipo de documento según la nacionalidad
+  useEffect(() => {
+    if (formData.nacionalidad === "Argentina") {
+      setFormData((prev) => ({ ...prev, tipo_documento: "DNI" }))
+    } else {
+      setFormData((prev) => ({ ...prev, tipo_documento: "PASAPORTE" }))
+    }
+  }, [formData.nacionalidad])
+
+  // Validar formato del documento
+  const validarDocumento = (documento: string, tipo: string) => {
+    if (!documento) return { valido: false, mensaje: "" }
+
+    if (tipo === "DNI") {
+      const dniRegex = /^\d{7,8}$/
+      if (!dniRegex.test(documento)) {
+        return { valido: false, mensaje: "El DNI debe tener 7 u 8 dígitos" }
+      }
+    } else {
+      const pasaporteRegex = /^[A-Z0-9]{6,}$/i
+      if (!pasaporteRegex.test(documento)) {
+        return { valido: false, mensaje: "El pasaporte debe tener al menos 6 caracteres alfanuméricos" }
+      }
+    }
+
+    return { valido: true, mensaje: "" }
+  }
+
+  const documentoValidacion = validarDocumento(formData.cliente_documento, formData.tipo_documento)
 
   // Cargar habitaciones disponibles
   useEffect(() => {
@@ -70,6 +127,13 @@ export default function NuevaReserva() {
     e.preventDefault()
     setLoading(true)
     setError("")
+
+    // Validar documento antes de enviar
+    if (!documentoValidacion.valido) {
+      setError(documentoValidacion.mensaje)
+      setLoading(false)
+      return
+    }
 
     try {
       const response = await fetch("/api/admin/reservas", {
@@ -155,6 +219,77 @@ export default function NuevaReserva() {
                     required
                   />
                 </div>
+
+                <div>
+                  <Label htmlFor="nacionalidad">Nacionalidad *</Label>
+                  <Select
+                    value={formData.nacionalidad}
+                    onValueChange={(value) => handleInputChange("nacionalidad", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona nacionalidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paises.map((pais) => (
+                        <SelectItem key={pais} value={pais}>
+                          {pais === "Argentina"
+                            ? "🇦🇷 Argentina"
+                            : pais === "Brasil"
+                              ? "🇧🇷 Brasil"
+                              : pais === "Chile"
+                                ? "🇨🇱 Chile"
+                                : pais === "Uruguay"
+                                  ? "🇺🇾 Uruguay"
+                                  : pais === "Estados Unidos"
+                                    ? "🇺🇸 Estados Unidos"
+                                    : pais === "España"
+                                      ? "🇪🇸 España"
+                                      : `🌍 ${pais}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label htmlFor="tipo_documento">Documento *</Label>
+                    <Select
+                      value={formData.tipo_documento}
+                      onValueChange={(value) => handleInputChange("tipo_documento", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DNI">DNI</SelectItem>
+                        <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="cliente_documento">Número de {formData.tipo_documento} *</Label>
+                    <div className="relative">
+                      <CreditCard className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="cliente_documento"
+                        value={formData.cliente_documento}
+                        onChange={(e) => handleInputChange("cliente_documento", e.target.value.toUpperCase())}
+                        placeholder={formData.tipo_documento === "DNI" ? "12345678" : "ABC123456"}
+                        className={`pl-10 ${
+                          formData.cliente_documento && !documentoValidacion.valido
+                            ? "border-red-300 focus:border-red-400"
+                            : ""
+                        }`}
+                        required
+                      />
+                    </div>
+                    {formData.cliente_documento && !documentoValidacion.valido && (
+                      <p className="text-sm text-red-600 mt-1">{documentoValidacion.mensaje}</p>
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <Label htmlFor="cliente_email">Email *</Label>
                   <div className="relative">
@@ -272,7 +407,15 @@ export default function NuevaReserva() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="grid md:grid-cols-3 gap-4 text-sm">
+                <div className="grid md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="font-medium">Cliente:</p>
+                    <p>{formData.cliente_nombre || "Nombre"}</p>
+                    <p className="text-gray-600">{formData.nacionalidad}</p>
+                    <p className="text-gray-600">
+                      {formData.tipo_documento}: {formData.cliente_documento || "N°"}
+                    </p>
+                  </div>
                   <div>
                     <p className="font-medium">Habitación:</p>
                     <p>
@@ -319,7 +462,7 @@ export default function NuevaReserva() {
           )}
 
           <div className="flex space-x-4">
-            <Button type="submit" disabled={loading} className="flex-1">
+            <Button type="submit" disabled={loading || !documentoValidacion.valido} className="flex-1">
               {loading ? "Creando..." : "Crear Reserva"}
             </Button>
             <Button type="button" variant="outline" asChild>

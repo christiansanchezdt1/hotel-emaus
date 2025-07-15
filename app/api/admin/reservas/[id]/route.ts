@@ -3,12 +3,14 @@ import { supabase } from "@/lib/supabase"
 import { getAdminSession } from "@/lib/auth"
 
 // GET - Obtener una reserva específica
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
+
+    const { id } = await params
 
     const { data: reserva, error } = await supabase
       .from("reservas")
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         )
       `,
       )
-      .eq("id", params.id)
+      .eq("id", id)
       .single()
 
     if (error) {
@@ -39,19 +41,23 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PUT - Actualizar reserva
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
+    const { id } = await params
     const body = await request.json()
     const {
       habitacion_id,
       cliente_nombre,
       cliente_email,
       cliente_telefono,
+      cliente_documento,
+      tipo_documento,
+      nacionalidad,
       fecha_checkin,
       fecha_checkout,
       estado,
@@ -61,6 +67,24 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     // Validaciones básicas
     if (!habitacion_id || !cliente_nombre || !cliente_email || !fecha_checkin || !fecha_checkout || !total) {
       return NextResponse.json({ error: "Campos requeridos faltantes" }, { status: 400 })
+    }
+
+    // Validar formato del documento si se proporciona
+    if (cliente_documento && tipo_documento) {
+      if (tipo_documento === "DNI") {
+        const dniRegex = /^\d{7,8}$/
+        if (!dniRegex.test(cliente_documento)) {
+          return NextResponse.json({ error: "El DNI debe tener 7 u 8 dígitos" }, { status: 400 })
+        }
+      } else if (tipo_documento === "PASAPORTE") {
+        const pasaporteRegex = /^[A-Z0-9]{6,}$/i
+        if (!pasaporteRegex.test(cliente_documento)) {
+          return NextResponse.json(
+            { error: "El pasaporte debe tener al menos 6 caracteres alfanuméricos" },
+            { status: 400 },
+          )
+        }
+      }
     }
 
     // Validar fechas
@@ -75,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       .from("reservas")
       .select("id")
       .eq("habitacion_id", habitacion_id)
-      .neq("id", params.id)
+      .neq("id", id)
       .in("estado", ["confirmada", "checkin"])
       .or(`fecha_checkin.lte.${fecha_checkout},fecha_checkout.gte.${fecha_checkin}`)
 
@@ -96,12 +120,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         cliente_nombre,
         cliente_email,
         cliente_telefono,
+        cliente_documento: cliente_documento || null,
+        tipo_documento: tipo_documento || "DNI",
+        nacionalidad: nacionalidad || "Argentina",
         fecha_checkin,
         fecha_checkout,
         estado,
         total,
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single()
 
@@ -118,21 +145,51 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE - Eliminar reserva
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
-    const { error } = await supabase.from("reservas").delete().eq("id", params.id)
+    const { id } = await params
 
-    if (error) {
-      console.error("Error deleting reserva:", error)
+    console.log(`Intentando eliminar reserva con ID: ${id}`)
+
+    // Verificar si la reserva existe
+    const { data: reserva, error: reservaError } = await supabase.from("reservas").select("*").eq("id", id).single()
+
+    if (reservaError) {
+      console.error("Error fetching reserva:", reservaError)
+      return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 })
+    }
+
+    console.log(`Reserva encontrada: ${reserva.cliente_nombre} - Estado: ${reserva.estado}`)
+
+    // Verificar si la reserva se puede eliminar (no debe estar en checkout)
+    if (reserva.estado === "checkout") {
+      return NextResponse.json(
+        {
+          error: `No se puede eliminar la reserva. La reserva ya está finalizada (checkout).`,
+        },
+        { status: 400 },
+      )
+    }
+
+    // Eliminar la reserva
+    const { error: deleteError } = await supabase.from("reservas").delete().eq("id", id)
+
+    if (deleteError) {
+      console.error("Error deleting reserva:", deleteError)
       return NextResponse.json({ error: "Error al eliminar la reserva" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    console.log(`Reserva ${reserva.cliente_nombre} eliminada exitosamente`)
+
+    return NextResponse.json({
+      success: true,
+      message: `Reserva de ${reserva.cliente_nombre} eliminada exitosamente`,
+    })
   } catch (error) {
     console.error("Error in DELETE reserva:", error)
     return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })

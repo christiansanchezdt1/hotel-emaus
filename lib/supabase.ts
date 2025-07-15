@@ -4,7 +4,11 @@ const supabaseUrl = "https://nmdvilutbmkksaoxulvk.supabase.co"
 const supabaseAnonKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZHZpbHV0Ym1ra3Nhb3h1bHZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTA1MDEsImV4cCI6MjA2NzQ4NjUwMX0.oQL1zc8_lvZUjzSIUVHFZObVMweDhWSEuZ8-jIe-pnA"
 
+// Cliente para uso público (frontend)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Cliente con privilegios de administrador (backend/API routes) - usando la misma key por ahora
+export const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey)
 
 export type Database = {
   public: {
@@ -51,6 +55,9 @@ export type Database = {
           cliente_nombre: string
           cliente_email: string
           cliente_telefono: string | null
+          cliente_documento: string | null
+          tipo_documento: string | null
+          nacionalidad: string | null
           fecha_checkin: string
           fecha_checkout: string
           estado: string
@@ -63,6 +70,9 @@ export type Database = {
           cliente_nombre: string
           cliente_email: string
           cliente_telefono?: string | null
+          cliente_documento?: string | null
+          tipo_documento?: string | null
+          nacionalidad?: string | null
           fecha_checkin: string
           fecha_checkout: string
           estado?: string
@@ -75,6 +85,9 @@ export type Database = {
           cliente_nombre?: string
           cliente_email?: string
           cliente_telefono?: string | null
+          cliente_documento?: string | null
+          tipo_documento?: string | null
+          nacionalidad?: string | null
           fecha_checkin?: string
           fecha_checkout?: string
           estado?: string

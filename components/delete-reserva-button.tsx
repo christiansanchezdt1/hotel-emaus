@@ -6,90 +6,62 @@ import { Trash2 } from "lucide-react"
 import { DeleteConfirmationModal } from "./delete-confirmation-modal"
 import { useDeleteReserva } from "@/hooks/use-delete-reserva"
 
-interface DeleteReservaButtonProps {
-  reserva: {
-    id: number
-    cliente_nombre: string
-    cliente_email: string
-    habitaciones: {
-      numero: string
-      tipo: string
-    }
-    fecha_checkin: string
-    fecha_checkout: string
-    estado: string
-    total: number
+interface Reserva {
+  id: number
+  cliente_nombre: string
+  cliente_documento: string
+  tipo_documento: string
+  fecha_checkin: string
+  fecha_checkout: string
+  estado: string
+  total: number
+  habitaciones?: {
+    numero: string
+    tipo: string
   }
-  size?: "default" | "sm" | "lg"
-  variant?: "default" | "destructive" | "outline"
 }
 
-export function DeleteReservaButton({ reserva, size = "sm", variant = "destructive" }: DeleteReservaButtonProps) {
+interface DeleteReservaButtonProps {
+  reserva: Reserva
+  onDeleted?: () => void
+}
+
+export function DeleteReservaButton({ reserva, onDeleted }: DeleteReservaButtonProps) {
   const [showModal, setShowModal] = useState(false)
-  const { deleteReserva } = useDeleteReserva()
+
+  const { deleteReserva, isDeleting } = useDeleteReserva({
+    onSuccess: () => {
+      console.log("Reserva eliminada, ejecutando callback...")
+      if (onDeleted) {
+        onDeleted()
+      }
+    },
+  })
 
   const handleDelete = async () => {
-    await deleteReserva(reserva.id)
-  }
+    const result = await deleteReserva(reserva.id)
 
-  const formatFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  }
-
-  const calcularNoches = () => {
-    const checkin = new Date(reserva.fecha_checkin)
-    const checkout = new Date(reserva.fecha_checkout)
-    const noches = Math.ceil((checkout.getTime() - checkin.getTime()) / (1000 * 3600 * 24))
-    return noches > 0 ? noches : 0
-  }
-
-  const getEstadoText = (estado: string) => {
-    switch (estado) {
-      case "confirmada":
-        return "Confirmada"
-      case "checkin":
-        return "Check-in realizado"
-      case "checkout":
-        return "Check-out realizado"
-      case "cancelada":
-        return "Cancelada"
-      default:
-        return estado
+    if (result.success) {
+      setShowModal(false)
     }
   }
 
+  // No permitir eliminar reservas con checkout
   const canDelete = reserva.estado !== "checkout"
-  const deleteReason = reserva.estado === "checkout" ? "No se pueden eliminar reservas ya finalizadas" : ""
-
-  // Crear descripción detallada para el modal
-  const modalDescription = `Esta acción eliminará permanentemente la reserva del sistema. 
-    
-Detalles de la reserva:
-• Cliente: ${reserva.cliente_nombre}
-• Email: ${reserva.cliente_email}
-• Habitación: #${reserva.habitaciones?.numero} (${reserva.habitaciones?.tipo})
-• Fechas: ${formatFecha(reserva.fecha_checkin)} - ${formatFecha(reserva.fecha_checkout)}
-• Duración: ${calcularNoches()} noches
-• Total: $${reserva.total}
-• Estado: ${getEstadoText(reserva.estado)}`
-
-  const itemName = `${reserva.cliente_nombre} - Habitación #${reserva.habitaciones?.numero}`
+  const tooltipText = !canDelete ? "No se puede eliminar una reserva con checkout completado" : "Eliminar reserva"
 
   return (
     <>
       <Button
-        variant={variant}
-        size={size}
+        variant="destructive"
+        size="sm"
         onClick={() => setShowModal(true)}
-        disabled={!canDelete}
-        title={deleteReason}
+        disabled={!canDelete || isDeleting}
+        title={tooltipText}
+        className={!canDelete ? "opacity-50 cursor-not-allowed" : ""}
       >
         <Trash2 className="w-4 h-4" />
-        {size !== "sm" && <span className="ml-2">Eliminar</span>}
+        {isDeleting ? "Eliminando..." : "Eliminar"}
       </Button>
 
       <DeleteConfirmationModal
@@ -97,9 +69,35 @@ Detalles de la reserva:
         onClose={() => setShowModal(false)}
         onConfirm={handleDelete}
         title="Eliminar Reserva"
-        description={modalDescription}
-        itemName={itemName}
-        destructiveAction="eliminar"
+        description={
+          <div className="space-y-2">
+            <p>¿Estás seguro de que deseas eliminar esta reserva?</p>
+            <div className="bg-gray-50 p-3 rounded-lg text-sm">
+              <p>
+                <strong>Cliente:</strong> {reserva.cliente_nombre}
+              </p>
+              <p>
+                <strong>Documento:</strong> {reserva.tipo_documento} {reserva.cliente_documento}
+              </p>
+              <p>
+                <strong>Habitación:</strong> #{reserva.habitaciones?.numero} - {reserva.habitaciones?.tipo}
+              </p>
+              <p>
+                <strong>Fechas:</strong> {new Date(reserva.fecha_checkin).toLocaleDateString()} -{" "}
+                {new Date(reserva.fecha_checkout).toLocaleDateString()}
+              </p>
+              <p>
+                <strong>Estado:</strong> {reserva.estado}
+              </p>
+              <p>
+                <strong>Total:</strong> ${reserva.total}
+              </p>
+            </div>
+            <p className="text-red-600 font-medium">Esta acción no se puede deshacer.</p>
+          </div>
+        }
+        confirmText="Sí, eliminar"
+        isLoading={isDeleting}
       />
     </>
   )

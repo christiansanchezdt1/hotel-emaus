@@ -72,10 +72,10 @@ export async function GET(request: NextRequest) {
       query = query.lte("fecha_checkin", fecha).gte("fecha_checkout", fecha)
     }
 
-    // Filtro de búsqueda por nombre, email o número de habitación
+    // Filtro de búsqueda por nombre, email, documento o número de habitación
     if (search) {
       query = query.or(
-        `cliente_nombre.ilike.%${search}%,cliente_email.ilike.%${search}%,habitaciones.numero.ilike.%${search}%`,
+        `cliente_nombre.ilike.%${search}%,cliente_email.ilike.%${search}%,cliente_documento.ilike.%${search}%,habitaciones.numero.ilike.%${search}%`,
       )
     }
 
@@ -122,6 +122,9 @@ export async function POST(request: NextRequest) {
       cliente_nombre,
       cliente_email,
       cliente_telefono,
+      cliente_documento,
+      tipo_documento,
+      nacionalidad,
       fecha_checkin,
       fecha_checkout,
       estado,
@@ -131,6 +134,24 @@ export async function POST(request: NextRequest) {
     // Validaciones básicas
     if (!habitacion_id || !cliente_nombre || !cliente_email || !fecha_checkin || !fecha_checkout || !total) {
       return NextResponse.json({ error: "Campos requeridos faltantes" }, { status: 400 })
+    }
+
+    // Validar formato del documento si se proporciona
+    if (cliente_documento && tipo_documento) {
+      if (tipo_documento === "DNI") {
+        const dniRegex = /^\d{7,8}$/
+        if (!dniRegex.test(cliente_documento)) {
+          return NextResponse.json({ error: "El DNI debe tener 7 u 8 dígitos" }, { status: 400 })
+        }
+      } else if (tipo_documento === "PASAPORTE") {
+        const pasaporteRegex = /^[A-Z0-9]{6,}$/i
+        if (!pasaporteRegex.test(cliente_documento)) {
+          return NextResponse.json(
+            { error: "El pasaporte debe tener al menos 6 caracteres alfanuméricos" },
+            { status: 400 },
+          )
+        }
+      }
     }
 
     // Validar fechas
@@ -165,6 +186,9 @@ export async function POST(request: NextRequest) {
         cliente_nombre,
         cliente_email,
         cliente_telefono,
+        cliente_documento: cliente_documento || null,
+        tipo_documento: tipo_documento || "DNI",
+        nacionalidad: nacionalidad || "Argentina",
         fecha_checkin,
         fecha_checkout,
         estado: estado || "confirmada",

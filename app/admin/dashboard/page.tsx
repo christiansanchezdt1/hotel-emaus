@@ -64,7 +64,7 @@ export default async function AdminDashboard() {
                 <Bed className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Hotel Emaús</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Hotel Casa de Emaús</h1>
                 <p className="text-sm text-gray-600">Panel de Administración</p>
               </div>
             </div>

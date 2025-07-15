@@ -3,14 +3,16 @@ import { supabase } from "@/lib/supabase"
 import { getAdminSession } from "@/lib/auth"
 
 // GET - Obtener una habitación específica
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
-    const { data: habitacion, error } = await supabase.from("habitaciones").select("*").eq("id", params.id).single()
+    const { id } = await params
+
+    const { data: habitacion, error } = await supabase.from("habitaciones").select("*").eq("id", id).single()
 
     if (error) {
       console.error("Error fetching habitacion:", error)
@@ -25,13 +27,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PUT - Actualizar habitación
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
+    const { id } = await params
     const body = await request.json()
     const { numero, tipo, precio, capacidad, descripcion, amenidades, estado } = body
 
@@ -45,7 +48,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       .from("habitaciones")
       .select("id")
       .eq("numero", numero)
-      .neq("id", params.id)
+      .neq("id", id)
       .single()
 
     if (checkError && checkError.code !== "PGRST116") {
@@ -69,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         amenidades: amenidades || [],
         estado,
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single()
 
@@ -86,20 +89,22 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE - Eliminar habitación
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getAdminSession()
     if (!session) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
-    console.log(`Intentando eliminar habitación con ID: ${params.id}`)
+    const { id } = await params
+
+    console.log(`Intentando eliminar habitación con ID: ${id}`)
 
     // Verificar si la habitación existe
     const { data: habitacion, error: habitacionError } = await supabase
       .from("habitaciones")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single()
 
     if (habitacionError) {
@@ -113,7 +118,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { data: reservasActivas, error: reservasError } = await supabase
       .from("reservas")
       .select("id, estado, fecha_checkin, fecha_checkout, cliente_nombre")
-      .eq("habitacion_id", params.id)
+      .eq("habitacion_id", id)
       .in("estado", ["confirmada", "checkin"])
 
     if (reservasError) {
@@ -140,7 +145,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { data: reservasHistoricas, error: historicoError } = await supabase
       .from("reservas")
       .select("id")
-      .eq("habitacion_id", params.id)
+      .eq("habitacion_id", id)
       .eq("estado", "checkout")
 
     if (historicoError) {
@@ -155,7 +160,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Eliminar la habitación
-    const { error: deleteError } = await supabase.from("habitaciones").delete().eq("id", params.id)
+    const { error: deleteError } = await supabase.from("habitaciones").delete().eq("id", id)
 
     if (deleteError) {
       console.error("Error deleting habitacion:", deleteError)
