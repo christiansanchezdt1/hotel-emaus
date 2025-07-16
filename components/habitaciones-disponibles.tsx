@@ -1,358 +1,232 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { useHabitacionesDisponibles } from "@/hooks/use-habitaciones-disponibles"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Calendar,
-  Users,
-  Wifi,
-  Car,
-  Coffee,
-  Tv,
-  Bath,
-  Wind,
-  Star,
-  MapPin,
-  Phone,
-  Loader2,
-  AlertCircle,
-  Search,
-} from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { CalendarIcon, BedIcon, UsersIcon, StarIcon, PhoneIcon } from "lucide-react"
 
 export function HabitacionesDisponibles() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>("")
-  const { habitaciones, loading, error, total, warning, debug } = useHabitacionesDisponibles(fechaSeleccionada)
+  const { habitaciones, isLoading, error, mensaje, warning, refetch } = useHabitacionesDisponibles(fechaSeleccionada)
 
-  const today = new Date().toISOString().split("T")[0]
+  // Calcular fecha mínima (hoy)
+  const hoy = new Date()
+  const fechaMinima = hoy.toISOString().split("T")[0]
 
-  const formatearPrecio = (precio: number) => {
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-    }).format(precio)
+  // Manejar cambio de fecha
+  const handleFechaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFechaSeleccionada(e.target.value)
   }
 
-  const getAmenidadesIconos = (amenidades: string[] | null) => {
-    if (!amenidades) return []
-
-    const iconMap: { [key: string]: any } = {
-      WiFi: Wifi,
-      TV: Tv,
-      "Baño privado": Bath,
-      "Aire acondicionado": Wind,
-      Estacionamiento: Car,
-      Desayuno: Coffee,
-    }
-
-    return amenidades.map((amenidad) => ({
-      nombre: amenidad,
-      Icon: iconMap[amenidad] || Star,
-    }))
-  }
-
-  const getTipoColor = (tipo: string) => {
-    switch (tipo.toLowerCase()) {
-      case "simple":
-        return "bg-blue-100 text-blue-800 border-blue-200"
-      case "doble":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "triple":
-        return "bg-purple-100 text-purple-800 border-purple-200"
-      case "suite":
-        return "bg-amber-100 text-amber-800 border-amber-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+  // Formatear fecha para mensaje de WhatsApp
+  const formatearFechaParaMensaje = (fecha: string) => {
+    if (!fecha) return ""
+    try {
+      return new Date(fecha).toLocaleDateString("es-AR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    } catch (error) {
+      return fecha
     }
   }
 
-  const esHabitacionPopular = (habitacion: any) => {
-    return habitacion.tipo.toLowerCase() === "doble" || habitacion.precio < 15000
+  // Generar mensaje de WhatsApp
+  const generarMensajeWhatsApp = (habitacion: any) => {
+    const fechaMsg = fechaSeleccionada ? `para el ${formatearFechaParaMensaje(fechaSeleccionada)}` : ""
+
+    return encodeURIComponent(
+      `Hola, me interesa reservar la habitación ${habitacion.numero} (${habitacion.tipo}) ${fechaMsg}. ¿Está disponible?`,
+    )
   }
 
   return (
-    <div className="py-16 px-4">
-      <div className="container mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold mb-4">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Habitaciones Disponibles
-            </span>
-          </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            Descubre nuestras cómodas habitaciones diseñadas para tu descanso y bienestar
-          </p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-center mb-6">Habitaciones Disponibles</h2>
 
-          {/* Filtro de Fecha */}
-          <Card className="max-w-md mx-auto mb-8 bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Calendar className="h-5 w-5 text-blue-600" />
-                Consultar Disponibilidad
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="fecha" className="text-sm font-medium text-gray-700">
-                  Fecha de consulta
-                </Label>
-                <Input
-                  id="fecha"
-                  type="date"
-                  value={fechaSeleccionada}
-                  onChange={(e) => setFechaSeleccionada(e.target.value)}
-                  min={today}
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setFechaSeleccionada(today)}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Consultar Hoy
-                </Button>
-                {fechaSeleccionada && (
-                  <Button variant="outline" onClick={() => setFechaSeleccionada("")} className="border-gray-300">
-                    Limpiar
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Filtro de fecha */}
+        <div className="max-w-md mx-auto bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+            <div className="flex-1 w-full">
+              <label htmlFor="fecha" className="block text-sm font-medium mb-1 flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4" />
+                Consultar disponibilidad para fecha específica
+              </label>
+              <input
+                type="date"
+                id="fecha"
+                name="fecha"
+                min={fechaMinima}
+                value={fechaSeleccionada}
+                onChange={handleFechaChange}
+                className="w-full rounded-md border border-gray-300 p-2"
+              />
+            </div>
+            <Button
+              onClick={() => setFechaSeleccionada("")}
+              variant="outline"
+              className="mt-0"
+              disabled={!fechaSeleccionada}
+            >
+              Limpiar
+            </Button>
+          </div>
         </div>
 
-        {/* Debug Info (solo en desarrollo) */}
-        {process.env.NODE_ENV === "development" && debug && (
-          <Card className="mb-8 bg-gray-50 border-gray-200">
-            <CardHeader>
-              <CardTitle className="text-sm text-gray-600">Debug Info</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-gray-500">
-              <pre>{JSON.stringify(debug, null, 2)}</pre>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Estados de Loading y Error */}
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-600">Cargando habitaciones disponibles...</p>
-            </div>
+        {/* Mensaje informativo */}
+        {mensaje && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-center">
+            <p className="text-blue-800">{mensaje}</p>
           </div>
         )}
 
-        {error && (
-          <Card className="mb-8 bg-red-50 border-red-200">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600" />
-                <div>
-                  <h3 className="font-semibold text-red-800">Error al cargar habitaciones</h3>
-                  <p className="text-red-600">{error}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+        {/* Advertencia */}
         {warning && (
-          <Card className="mb-8 bg-yellow-50 border-yellow-200">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-600" />
-                <div>
-                  <h3 className="font-semibold text-yellow-800">Advertencia</h3>
-                  <p className="text-yellow-600">{warning}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Información de Consulta */}
-        {!loading && (
-          <div className="text-center mb-8">
-            <p className="text-gray-600">
-              {fechaSeleccionada ? (
-                <>
-                  Mostrando <span className="font-semibold text-blue-600">{total}</span> habitaciones disponibles para
-                  el{" "}
-                  <span className="font-semibold">
-                    {new Date(fechaSeleccionada + "T00:00:00").toLocaleDateString("es-AR")}
-                  </span>
-                </>
-              ) : (
-                <>
-                  Mostrando <span className="font-semibold text-blue-600">{total}</span> habitaciones disponibles
-                </>
-              )}
-            </p>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-center">
+            <p className="text-yellow-800">{warning}</p>
           </div>
         )}
 
-        {/* Grid de Habitaciones */}
-        {!loading && habitaciones.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {habitaciones.map((habitacion) => (
-              <Card
-                key={habitacion.id}
-                className="group bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 relative overflow-hidden"
-              >
-                {esHabitacionPopular(habitacion) && (
-                  <Badge className="absolute top-4 right-4 z-10 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                    ⭐ Más Popular
-                  </Badge>
-                )}
-
-                <div className="aspect-[4/3] bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center relative">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <span className="text-white font-bold text-xl">{habitacion.numero}</span>
-                    </div>
-                    <p className="text-gray-600 font-medium">Habitación {habitacion.numero}</p>
-                  </div>
-                </div>
-
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <Badge className={`${getTipoColor(habitacion.tipo)} border`}>{habitacion.tipo}</Badge>
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">{habitacion.capacidad} personas</span>
-                    </div>
-                  </div>
-
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">Habitación {habitacion.tipo}</h3>
-
-                  {habitacion.descripcion && (
-                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{habitacion.descripcion}</p>
-                  )}
-
-                  {/* Amenidades */}
-                  {habitacion.amenidades && habitacion.amenidades.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">Incluye:</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {getAmenidadesIconos(habitacion.amenidades).map((amenidad, index) => (
-                          <div key={index} className="flex items-center gap-1 bg-gray-100 rounded-full px-3 py-1">
-                            <amenidad.Icon className="h-3 w-3 text-gray-600" />
-                            <span className="text-xs text-gray-600">{amenidad.nombre}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Precio y Botón */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <div>
-                      <div className="text-2xl font-bold text-gray-800">{formatearPrecio(habitacion.precio)}</div>
-                      <div className="text-sm text-gray-500">por noche</div>
-                    </div>
-                    <Button
-                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
-                      onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
-                    >
-                      <Phone className="h-4 w-4 mr-2" />
-                      Reservar
-                    </Button>
-                  </div>
-
-                  {/* Calificación */}
-                  <div className="flex items-center justify-center mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex items-center gap-1">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      ))}
-                      <span className="text-sm text-gray-600 ml-2">5.0 (Excelente)</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Estado Vacío */}
-        {!loading && habitaciones.length === 0 && !error && (
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-            <CardContent className="p-12 text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-8 w-8 text-gray-400" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                {fechaSeleccionada ? "No hay habitaciones disponibles" : "Selecciona una fecha"}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {fechaSeleccionada
-                  ? "No encontramos habitaciones disponibles para la fecha seleccionada. Prueba con otra fecha."
-                  : "Selecciona una fecha para ver las habitaciones disponibles."}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  onClick={() => setFechaSeleccionada("")}
-                  variant="outline"
-                  className="border-blue-200 text-blue-600 hover:bg-blue-50"
-                >
-                  Ver Todas las Habitaciones
-                </Button>
-                <Button
-                  onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
-                  className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
-                >
-                  <Phone className="h-4 w-4 mr-2" />
-                  Contactar por WhatsApp
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Información Adicional */}
-        {!loading && habitaciones.length > 0 && (
-          <div className="mt-12 text-center">
-            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-0">
-              <CardContent className="p-8">
-                <h3 className="text-2xl font-bold text-gray-800 mb-4">¿Necesitas ayuda con tu reserva?</h3>
-                <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-                  Nuestro equipo está disponible 24/7 para ayudarte a encontrar la habitación perfecta y resolver todas
-                  tus dudas.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Button
-                    size="lg"
-                    onClick={() => window.open("https://wa.me/5493875505939", "_blank")}
-                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white"
-                  >
-                    <Phone className="h-5 w-5 mr-2" />
-                    WhatsApp: +54 387 550-5939
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={() => window.open("mailto:hotelcasadeemaus@gmail.com", "_blank")}
-                    className="border-blue-200 text-blue-600 hover:bg-blue-50"
-                  >
-                    <MapPin className="h-5 w-5 mr-2" />
-                    hotelcasadeemaus@gmail.com
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-center">
+            <p className="text-red-800">{error}</p>
           </div>
         )}
       </div>
+
+      {/* Estado de carga */}
+      {isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-24 w-full mb-4" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-5/6" />
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-10 w-full" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Sin habitaciones */}
+      {!isLoading && habitaciones.length === 0 && !error && (
+        <div className="text-center py-12">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-blue-100 text-blue-600 mb-4">
+            <BedIcon className="h-10 w-10" />
+          </div>
+          <h3 className="text-xl font-semibold mb-2">{mensaje || "No hay habitaciones disponibles"}</h3>
+          <p className="text-gray-500 max-w-md mx-auto mb-6">
+            {fechaSeleccionada
+              ? "Prueba con otra fecha o contáctanos directamente para verificar disponibilidad."
+              : "Por favor, intenta más tarde o contáctanos directamente."}
+          </p>
+          <Button
+            variant="default"
+            size="lg"
+            onClick={() =>
+              window.open(
+                `https://wa.me/5493875505939?text=${encodeURIComponent(
+                  `Hola, quisiera consultar por disponibilidad de habitaciones${
+                    fechaSeleccionada ? ` para el ${formatearFechaParaMensaje(fechaSeleccionada)}` : ""
+                  }.`,
+                )}`,
+                "_blank",
+              )
+            }
+            className="gap-2"
+          >
+            <PhoneIcon className="h-5 w-5" />
+            Consultar por WhatsApp
+          </Button>
+        </div>
+      )}
+
+      {/* Lista de habitaciones */}
+      {!isLoading && habitaciones.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-10">
+          {habitaciones.map((habitacion) => (
+            <Card key={habitacion.id} className="overflow-hidden flex flex-col h-full">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <BedIcon className="h-5 w-5 text-blue-600" />
+                      Habitación {habitacion.numero}
+                    </CardTitle>
+                    <CardDescription>{habitacion.tipo}</CardDescription>
+                  </div>
+                  <Badge variant="outline" className="bg-blue-50">
+                    ${habitacion.precio.toLocaleString("es-AR")}
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent className="flex-1">
+                <div className="flex items-center gap-2 mb-3">
+                  <UsersIcon className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm text-gray-600">
+                    Capacidad: {habitacion.capacidad} {habitacion.capacidad === 1 ? "persona" : "personas"}
+                  </span>
+                </div>
+
+                {habitacion.descripcion && <p className="text-gray-600 mb-4 text-sm">{habitacion.descripcion}</p>}
+
+                {habitacion.amenidades && habitacion.amenidades.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {habitacion.amenidades.map((amenidad, index) => (
+                      <Badge key={index} variant="secondary" className="bg-gray-100">
+                        {amenidad}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <StarIcon
+                      key={star}
+                      className={`h-4 w-4 ${star <= 4 ? "text-yellow-400" : "text-gray-300"}`}
+                      fill={star <= 4 ? "currentColor" : "none"}
+                    />
+                  ))}
+                  <span className="text-sm text-gray-500 ml-1">4.0</span>
+                </div>
+              </CardContent>
+
+              <CardFooter className="pt-2 mt-auto">
+                <Button
+                  className="w-full gap-2"
+                  onClick={() =>
+                    window.open(`https://wa.me/5493875505939?text=${generarMensajeWhatsApp(habitacion)}`, "_blank")
+                  }
+                >
+                  <PhoneIcon className="h-4 w-4" />
+                  Reservar por WhatsApp
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
-
-export default HabitacionesDisponibles
