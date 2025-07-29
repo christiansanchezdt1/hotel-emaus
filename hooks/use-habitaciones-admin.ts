@@ -1,7 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+
+export interface ReservaHabitacion {
+  id: number
+  estado: string
+  cliente_nombre: string
+  cliente_email: string
+  fecha_checkin: string
+  fecha_checkout: string
+  total: number
+}
 
 export interface HabitacionAdmin {
   id: number
@@ -14,14 +23,9 @@ export interface HabitacionAdmin {
   estado: string
   estadoReal: string
   created_at: string
-  reservasActivas: Array<{
-    id: number
-    estado: string
-    cliente_nombre: string
-    fecha_checkin: string
-    fecha_checkout: string
-  }>
-  reservasHistoricas: Array<{ id: number }>
+  reservasActivas: ReservaHabitacion[]
+  reservasFuturas: ReservaHabitacion[]
+  todasLasReservas: ReservaHabitacion[]
   puedeEliminar: boolean
 }
 
@@ -38,98 +42,118 @@ export interface HabitacionesResponse {
 }
 
 export interface HabitacionesFilters {
-  estado: string
-  tipo: string
-  search: string
-  page: number
-  limit: number
+  estado?: string
+  tipo?: string
+  search?: string
+  page?: number
+  limit?: number
+  capacidad?: number
+  precio_min?: number
+  precio_max?: number
 }
 
-export function useHabitacionesAdmin() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-
-  const [data, setData] = useState<HabitacionesResponse | null>(null)
+export function useHabitacionesAdmin(filters: HabitacionesFilters = {}) {
+  const [habitaciones, setHabitaciones] = useState<HabitacionAdmin[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Obtener filtros de la URL
-  const filters: HabitacionesFilters = {
-    estado: searchParams.get("estado") || "todas",
-    tipo: searchParams.get("tipo") || "todos",
-    search: searchParams.get("search") || "",
-    page: Number.parseInt(searchParams.get("page") || "1"),
-    limit: Number.parseInt(searchParams.get("limit") || "12"),
-  }
+  const [pagination, setPagination] = useState<HabitacionesResponse["pagination"] | null>(null)
 
   const fetchHabitaciones = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const params = new URLSearchParams({
-        estado: filters.estado,
-        tipo: filters.tipo,
-        search: filters.search,
-        page: filters.page.toString(),
-        limit: filters.limit.toString(),
-      })
+      const params = new URLSearchParams()
 
-      const response = await fetch(`/api/admin/habitaciones?${params}`)
-
-      if (!response.ok) {
-        throw new Error("Error al cargar habitaciones")
+      // Aplicar filtros
+      if (filters.estado && filters.estado !== "all" && filters.estado !== "todas") {
+        params.set("estado", filters.estado)
+      }
+      if (filters.tipo && filters.tipo !== "all" && filters.tipo !== "todos") {
+        params.set("tipo", filters.tipo)
+      }
+      if (filters.search && filters.search.trim()) {
+        params.set("search", filters.search.trim())
+      }
+      if (filters.page && filters.page > 0) {
+        params.set("page", filters.page.toString())
+      }
+      if (filters.limit && filters.limit > 0) {
+        params.set("limit", filters.limit.toString())
       }
 
-      const result = await response.json()
-      setData(result)
+      const url = `/api/admin/habitaciones${params.toString() ? `?${params.toString()}` : ""}`
+      console.log("Fetching habitaciones from:", url)
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      })
+
+      console.log("Response status:", response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Error desconocido" }))
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`)
+      }
+
+      const data: HabitacionesResponse = await response.json()
+      console.log("Data received:", data)
+
+      // Validar que la respuesta tenga la estructura esperada
+      if (!data || typeof data !== "object") {
+        throw new Error("Respuesta inválida del servidor")
+      }
+
+      const habitacionesArray = Array.isArray(data.habitaciones) ? data.habitaciones : []
+      const paginationData = data.pagination || {
+        page: 1,
+        limit: 12,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrev: false,
+      }
+
+      console.log("Setting habitaciones:", habitacionesArray.length)
+      setHabitaciones(habitacionesArray)
+      setPagination(paginationData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido")
+      console.error("Error fetching habitaciones:", err)
+      const errorMessage = err instanceof Error ? err.message : "Error al cargar habitaciones"
+      setError(errorMessage)
+      setHabitaciones([])
+      setPagination(null)
     } finally {
       setLoading(false)
     }
-  }, [filters.estado, filters.tipo, filters.search, filters.page, filters.limit])
+  }, [
+    filters.estado,
+    filters.tipo,
+    filters.search,
+    filters.page,
+    filters.limit,
+    filters.capacidad,
+    filters.precio_min,
+    filters.precio_max,
+  ])
 
   useEffect(() => {
     fetchHabitaciones()
   }, [fetchHabitaciones])
 
-  const updateFilters = useCallback(
-    (newFilters: Partial<HabitacionesFilters>) => {
-      const params = new URLSearchParams(searchParams.toString())
-
-      Object.entries(newFilters).forEach(([key, value]) => {
-        if (value && value !== "todas" && value !== "todos" && value !== "") {
-          params.set(key, value.toString())
-        } else {
-          params.delete(key)
-        }
-      })
-
-      // Si cambiamos filtros, volver a página 1
-      if (newFilters.estado || newFilters.tipo || newFilters.search) {
-        params.delete("page")
-      }
-
-      router.push(`/admin/habitaciones?${params.toString()}`)
-    },
-    [router, searchParams],
-  )
-
-  const changePage = useCallback(
-    (page: number) => {
-      updateFilters({ page })
-    },
-    [updateFilters],
-  )
+  const refetch = useCallback(() => {
+    fetchHabitaciones()
+  }, [fetchHabitaciones])
 
   return {
-    data,
+    habitaciones,
     loading,
     error,
-    filters,
-    updateFilters,
-    changePage,
-    refetch: fetchHabitaciones,
+    pagination,
+    refetch,
   }
 }

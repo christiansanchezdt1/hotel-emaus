@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     console.log("📅 Rango solicitado:", { fecha_checkin, fecha_checkout })
 
     // Verificar si la habitación ya está reservada en esas fechas
+    // Simplificamos la consulta para evitar errores de parsing
     const { data: reservasConflicto, error: errorConflicto } = await supabase
       .from("reservas")
       .select(`
@@ -63,12 +64,9 @@ export async function POST(request: NextRequest) {
         )
       `)
       .eq("habitacion_id", habitacion_id)
-      .in("estado", ["confirmada", "checkin"])
-      .or(`
-        and(fecha_checkin.lte.${fecha_checkin},fecha_checkout.gt.${fecha_checkin}),
-        and(fecha_checkin.lt.${fecha_checkout},fecha_checkout.gte.${fecha_checkout}),
-        and(fecha_checkin.gte.${fecha_checkin},fecha_checkout.lte.${fecha_checkout})
-      `)
+      .in("estado", ["confirmada", "checkin", "pendiente"])
+      .lte("fecha_checkin", fecha_checkout)
+      .gte("fecha_checkout", fecha_checkin)
 
     if (errorConflicto) {
       console.log("❌ Error al verificar conflictos:", errorConflicto)
@@ -96,7 +94,7 @@ export async function POST(request: NextRequest) {
         .from("habitaciones")
         .select("*")
         .eq("tipo", habitacionSolicitada.tipo)
-        .eq("disponible", true)
+        .eq("estado", "disponible")
         .neq("id", habitacion_id)
 
       const alternativasDisponibles = []
@@ -108,12 +106,9 @@ export async function POST(request: NextRequest) {
             .from("reservas")
             .select("id")
             .eq("habitacion_id", habitacion.id)
-            .in("estado", ["confirmada", "checkin"])
-            .or(`
-              and(fecha_checkin.lte.${fecha_checkin},fecha_checkout.gt.${fecha_checkin}),
-              and(fecha_checkin.lt.${fecha_checkout},fecha_checkout.gte.${fecha_checkout}),
-              and(fecha_checkin.gte.${fecha_checkin},fecha_checkout.lte.${fecha_checkout})
-            `)
+            .in("estado", ["confirmada", "checkin", "pendiente"])
+            .lte("fecha_checkin", fecha_checkout)
+            .gte("fecha_checkout", fecha_checkin)
 
           if (!conflictosAlternativa || conflictosAlternativa.length === 0) {
             alternativasDisponibles.push(habitacion)
@@ -140,46 +135,75 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Habitación disponible, creando reserva...")
 
-    // Crear la reserva
-    const { data: nuevaReserva, error: errorReserva } = await supabase
-      .from("reservas")
-      .insert({
-        habitacion_id,
-        cliente_nombre,
-        cliente_email,
-        cliente_telefono,
-        cliente_documento,
-        tipo_documento,
-        nacionalidad,
-        fecha_checkin,
-        fecha_checkout,
-        total,
-        estado: "confirmada",
+    try {
+      // Crear la reserva - el trigger de la base de datos validará automáticamente
+      const { data: nuevaReserva, error: errorReserva } = await supabase
+        .from("reservas")
+        .insert({
+          habitacion_id,
+          cliente_nombre,
+          cliente_email,
+          cliente_telefono,
+          cliente_documento,
+          tipo_documento,
+          nacionalidad,
+          fecha_checkin,
+          fecha_checkout,
+          total,
+          estado: "confirmada",
+        })
+        .select(`
+          *,
+          habitaciones (
+            numero,
+            tipo,
+            precio,
+            capacidad,
+            amenidades
+          )
+        `)
+        .single()
+
+      if (errorReserva) {
+        console.log("❌ Error al crear reserva:", errorReserva)
+
+        // Si el error es por solapamiento de fechas (trigger de la base de datos)
+        if (errorReserva.message?.includes("ya tiene una reserva en el rango de fechas")) {
+          return NextResponse.json(
+            {
+              error: "FECHAS_SOLAPADAS",
+              message: "Las fechas seleccionadas se solapan con una reserva existente para esta habitación",
+            },
+            { status: 409 },
+          )
+        }
+
+        return NextResponse.json({ error: "Error al crear la reserva" }, { status: 500 })
+      }
+
+      console.log("✅ Reserva creada exitosamente:", nuevaReserva.id)
+
+      return NextResponse.json({
+        success: true,
+        message: "Reserva creada exitosamente",
+        reserva: nuevaReserva,
       })
-      .select(`
-        *,
-        habitaciones (
-          numero,
-          tipo,
-          precio,
-          capacidad,
-          amenidades
+    } catch (dbError: any) {
+      console.log("❌ Error de base de datos:", dbError)
+
+      // Manejar error específico del trigger
+      if (dbError.message?.includes("ya tiene una reserva en el rango de fechas")) {
+        return NextResponse.json(
+          {
+            error: "FECHAS_SOLAPADAS",
+            message: "Las fechas seleccionadas se solapan con una reserva existente para esta habitación",
+          },
+          { status: 409 },
         )
-      `)
-      .single()
+      }
 
-    if (errorReserva) {
-      console.log("❌ Error al crear reserva:", errorReserva)
-      return NextResponse.json({ error: "Error al crear la reserva" }, { status: 500 })
+      return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
     }
-
-    console.log("✅ Reserva creada exitosamente:", nuevaReserva.id)
-
-    return NextResponse.json({
-      success: true,
-      message: "Reserva creada exitosamente",
-      reserva: nuevaReserva,
-    })
   } catch (error) {
     console.error("❌ Error general en POST /api/reservas:", error)
     return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })

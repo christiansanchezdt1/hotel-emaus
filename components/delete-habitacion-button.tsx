@@ -6,46 +6,36 @@ import { Trash2 } from "lucide-react"
 import { DeleteConfirmationModal } from "./delete-confirmation-modal"
 import { useDeleteHabitacion } from "@/hooks/use-delete-habitacion"
 
-interface Habitacion {
-  id: number
-  numero: string
-  tipo: string
-  precio: number
-  capacidad: number
-  estado: string
-  descripcion?: string
-  amenidades?: string[]
-}
-
 interface DeleteHabitacionButtonProps {
-  habitacion: Habitacion
-  onDeleted?: () => void
+  habitacionId: number
+  habitacionNumero: string
+  puedeEliminar?: boolean
+  onSuccess?: () => void
 }
 
-export function DeleteHabitacionButton({ habitacion, onDeleted }: DeleteHabitacionButtonProps) {
+export function DeleteHabitacionButton({
+  habitacionId,
+  habitacionNumero,
+  puedeEliminar = true,
+  onSuccess,
+}: DeleteHabitacionButtonProps) {
   const [showModal, setShowModal] = useState(false)
 
-  const { deleteHabitacion, isDeleting } = useDeleteHabitacion({
+  const { deleteHabitacion, isDeleting, error } = useDeleteHabitacion({
     onSuccess: () => {
-      console.log("Habitación eliminada, ejecutando callback...")
-      if (onDeleted) {
-        onDeleted()
+      setShowModal(false)
+      if (onSuccess) {
+        onSuccess()
       }
     },
   })
 
   const handleDelete = async () => {
-    const result = await deleteHabitacion(habitacion.id)
-
-    if (result.success) {
-      setShowModal(false)
-    }
+    await deleteHabitacion(habitacionId)
   }
 
-  // Solo permitir eliminar habitaciones disponibles
-  const canDelete = habitacion.estado === "disponible"
-  const tooltipText = !canDelete
-    ? "No se puede eliminar una habitación ocupada o en mantenimiento"
+  const tooltipText = !puedeEliminar
+    ? "No se puede eliminar una habitación con reservas activas"
     : "Eliminar habitación"
 
   return (
@@ -54,11 +44,11 @@ export function DeleteHabitacionButton({ habitacion, onDeleted }: DeleteHabitaci
         variant="destructive"
         size="sm"
         onClick={() => setShowModal(true)}
-        disabled={!canDelete || isDeleting}
+        disabled={!puedeEliminar || isDeleting}
         title={tooltipText}
-        className={!canDelete ? "opacity-50 cursor-not-allowed" : ""}
+        className={!puedeEliminar ? "opacity-50 cursor-not-allowed" : ""}
       >
-        <Trash2 className="w-4 h-4" />
+        <Trash2 className="w-3 h-3 mr-1" />
         {isDeleting ? "Eliminando..." : "Eliminar"}
       </Button>
 
@@ -68,34 +58,23 @@ export function DeleteHabitacionButton({ habitacion, onDeleted }: DeleteHabitaci
         onConfirm={handleDelete}
         title="Eliminar Habitación"
         description={
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p>¿Estás seguro de que deseas eliminar esta habitación?</p>
-            <div className="bg-gray-50 p-3 rounded-lg text-sm">
-              <p>
-                <strong>Número:</strong> #{habitacion.numero}
+            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+              <p className="font-medium text-amber-900">Habitación #{habitacionNumero}</p>
+              <p className="text-sm text-amber-700 mt-1">
+                Esta acción no se puede deshacer y eliminará permanentemente la habitación del sistema.
               </p>
-              <p>
-                <strong>Tipo:</strong> {habitacion.tipo}
-              </p>
-              <p>
-                <strong>Precio:</strong> ${habitacion.precio}/noche
-              </p>
-              <p>
-                <strong>Capacidad:</strong> {habitacion.capacidad} personas
-              </p>
-              <p>
-                <strong>Estado:</strong> {habitacion.estado}
-              </p>
-              {habitacion.descripcion && (
-                <p>
-                  <strong>Descripción:</strong> {habitacion.descripcion}
-                </p>
-              )}
             </div>
-            <p className="text-red-600 font-medium">Esta acción no se puede deshacer.</p>
+            {error && (
+              <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+            <p className="text-red-600 font-medium text-sm">⚠️ Esta acción es irreversible</p>
           </div>
         }
-        confirmText="Sí, eliminar"
+        confirmText="Sí, eliminar habitación"
         isLoading={isDeleting}
       />
     </>

@@ -17,11 +17,10 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "12")
     const search = searchParams.get("search") || ""
 
-    // Calcular offset para paginación
-    const offset = (page - 1) * limit
+    console.log("Fetching habitaciones with filters:", { estado, tipo, page, limit, search })
 
     // Construir query base
-    let query = supabase.from("habitaciones").select("*", { count: "exact" }).order("numero", { ascending: true })
+    let query = supabase.from("habitaciones").select("*", { count: "exact" })
 
     // Aplicar filtros
     if (estado !== "todas") {
@@ -65,9 +64,6 @@ export async function GET(request: NextRequest) {
       query = query.or(`numero.ilike.%${search}%,tipo.ilike.%${search}%,descripcion.ilike.%${search}%`)
     }
 
-    // Aplicar paginación
-    query = query.range(offset, offset + limit - 1)
-
     const { data: habitaciones, error, count } = await query
 
     if (error) {
@@ -75,39 +71,68 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Error al obtener habitaciones" }, { status: 500 })
     }
 
-    // Para cada habitación, obtener información de reservas
+    console.log("Habitaciones fetched:", habitaciones?.length || 0)
+
+    // Ordenamiento numérico en JavaScript
+    const habitacionesOrdenadas = (habitaciones || []).sort((a, b) => {
+      const numA = Number.parseInt(a.numero) || 0
+      const numB = Number.parseInt(b.numero) || 0
+      return numA - numB
+    })
+
+    // Aplicar paginación después del ordenamiento
+    const startIndex = (page - 1) * limit
+    const endIndex = startIndex + limit
+    const habitacionesPaginadas = habitacionesOrdenadas.slice(startIndex, endIndex)
+
+    // Fecha de hoy para filtrar reservas
+    const hoy = new Date().toISOString().split("T")[0]
+
+    // Para cada habitación, obtener solo reservas desde hoy hacia el futuro
     const habitacionesConReservas = await Promise.all(
-      (habitaciones || []).map(async (habitacion) => {
+      habitacionesPaginadas.map(async (habitacion) => {
+        // Obtener reservas activas (confirmada, checkin) desde hoy
         const { data: reservasActivas } = await supabase
           .from("reservas")
-          .select("id, estado, cliente_nombre, fecha_checkin, fecha_checkout")
+          .select("id, estado, cliente_nombre, cliente_email, fecha_checkin, fecha_checkout, total")
           .eq("habitacion_id", habitacion.id)
           .in("estado", ["confirmada", "checkin"])
+          .gte("fecha_checkout", hoy) // Solo reservas que terminan hoy o después
+          .order("fecha_checkin", { ascending: true })
 
-        const { data: reservasHistoricas } = await supabase
+        // Obtener reservas futuras (pendiente) desde hoy
+        const { data: reservasFuturasData } = await supabase
           .from("reservas")
-          .select("id")
+          .select("id, estado, cliente_nombre, cliente_email, fecha_checkin, fecha_checkout, total")
           .eq("habitacion_id", habitacion.id)
-          .eq("estado", "checkout")
+          .eq("estado", "pendiente")
+          .gte("fecha_checkin", hoy) // Solo reservas que empiezan hoy o después
+          .order("fecha_checkin", { ascending: true })
+
+        // Combinar solo reservas futuras (desde hoy)
+        const todasLasReservas = [...(reservasActivas || []), ...(reservasFuturasData || [])].sort(
+          (a, b) => new Date(a.fecha_checkin).getTime() - new Date(b.fecha_checkin).getTime(),
+        )
 
         return {
           ...habitacion,
           reservasActivas: reservasActivas || [],
-          reservasHistoricas: reservasHistoricas || [],
+          reservasFuturas: reservasFuturasData || [],
+          todasLasReservas,
           puedeEliminar: (!reservasActivas || reservasActivas.length === 0) && habitacion.estado === "disponible",
           estadoReal: reservasActivas && reservasActivas.length > 0 ? "ocupada" : habitacion.estado,
         }
       }),
     )
 
-    const totalPages = Math.ceil((count || 0) / limit)
+    const totalPages = Math.ceil((habitacionesOrdenadas.length || 0) / limit)
 
     return NextResponse.json({
       habitaciones: habitacionesConReservas,
       pagination: {
         page,
         limit,
-        total: count || 0,
+        total: habitacionesOrdenadas.length || 0,
         totalPages,
         hasNext: page < totalPages,
         hasPrev: page > 1,

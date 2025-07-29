@@ -3,14 +3,13 @@ import { verifyAdmin, createAdminSession } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { username, password } = body
-
-    console.log("Login attempt:", { username, password: "***" }) // Para debug
+    const { username, password } = await request.json()
 
     if (!username || !password) {
-      return NextResponse.json({ error: "Usuario y contraseña requeridos" }, { status: 400 })
+      return NextResponse.json({ error: "Username y password son requeridos" }, { status: 400 })
     }
+
+    console.log("Login attempt:", { username, password: "***" })
 
     const user = await verifyAdmin(username, password)
 
@@ -20,14 +19,7 @@ export async function POST(request: NextRequest) {
 
     await createAdminSession(user)
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-      },
-    })
+    return NextResponse.json({ success: true, user })
   } catch (error) {
     console.error("Error en login:", error)
     return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })

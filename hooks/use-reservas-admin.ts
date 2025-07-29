@@ -1,181 +1,162 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { supabaseAdmin } from "@/lib/supabase"
+import { useState, useEffect, useCallback } from "react"
 
 interface Reserva {
   id: number
-  habitacion_id: number
   cliente_nombre: string
-  cliente_email: string
+  cliente_email: string | null
   cliente_telefono: string | null
   cliente_documento: string | null
   tipo_documento: string | null
   nacionalidad: string | null
+  habitacion_id: number
   fecha_checkin: string
   fecha_checkout: string
-  estado: string
   total: number
+  estado: string
+  notas: string | null
   created_at: string
-  habitacion?: {
+  habitaciones?: {
     numero: string
     tipo: string
   }
 }
 
-interface ReservasResponse {
+interface ReservasData {
   reservas: Reserva[]
-  total: number
-  totalPages: number
-  currentPage: number
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+    hasNext: boolean
+    hasPrev: boolean
+  }
 }
 
-interface UseReservasAdminOptions {
-  page?: number
-  limit?: number
-  estado?: string
-  search?: string
+interface Filters {
+  search: string
+  estado: string
+  fecha_desde: string
+  fecha_hasta: string
+  habitacion_tipo: string
 }
 
-export function useReservasAdmin(options: UseReservasAdminOptions = {}) {
-  const { page = 1, limit = 10, estado, search } = options
-
-  const [data, setData] = useState<ReservasResponse>({
-    reservas: [],
-    total: 0,
-    totalPages: 0,
-    currentPage: 1,
-  })
+export function useReservasAdmin() {
+  const [data, setData] = useState<ReservasData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [filters, setFilters] = useState<Filters>({
+    search: "",
+    estado: "",
+    fecha_desde: "",
+    fecha_hasta: "",
+    habitacion_tipo: "",
+  })
 
-  const fetchReservas = async () => {
+  const fetchReservas = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      console.log("🔍 Hook: Fetching reservas con opciones:", { page, limit, estado, search })
+      // Construir URL con parámetros
+      const searchParams = new URLSearchParams()
+      searchParams.append("page", currentPage.toString())
+      searchParams.append("limit", "10")
 
-      let query = supabaseAdmin
-        .from("reservas")
-        .select(
-          `
-          *,
-          habitacion:habitaciones(numero, tipo)
-        `,
-          { count: "exact" },
-        )
-        .order("created_at", { ascending: false })
-
-      // Filtrar por estado si se especifica
-      if (estado && estado !== "todos") {
-        query = query.eq("estado", estado)
+      if (filters.search) searchParams.append("search", filters.search)
+      if (filters.estado && filters.estado !== "all") searchParams.append("estado", filters.estado)
+      if (filters.fecha_desde) searchParams.append("fecha_desde", filters.fecha_desde)
+      if (filters.fecha_hasta) searchParams.append("fecha_hasta", filters.fecha_hasta)
+      if (filters.habitacion_tipo && filters.habitacion_tipo !== "all") {
+        searchParams.append("habitacion_tipo", filters.habitacion_tipo)
       }
 
-      // Filtrar por búsqueda si se especifica
-      if (search && search.trim()) {
-        query = query.or(
-          `cliente_nombre.ilike.%${search}%,cliente_email.ilike.%${search}%,cliente_documento.ilike.%${search}%`,
-        )
+      const url = `/api/admin/reservas?${searchParams.toString()}`
+      console.log("Fetching reservas from:", url)
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
 
-      // Paginación
-      const from = (page - 1) * limit
-      const to = from + limit - 1
-      query = query.range(from, to)
+      const result = await response.json()
+      console.log("Reservas response:", result)
 
-      const { data: reservas, error: reservasError, count } = await query
-
-      if (reservasError) {
-        console.error("❌ Hook: Error al obtener reservas:", reservasError)
-        throw new Error("Error al obtener reservas: " + reservasError.message)
+      // Validar estructura de datos
+      if (!result.reservas || !Array.isArray(result.reservas)) {
+        throw new Error("Formato de respuesta inválido: falta array de reservas")
       }
 
-      const totalPages = Math.ceil((count || 0) / limit)
+      // Validar que cada reserva tenga los campos necesarios
+      const validReservas = result.reservas.filter((reserva: any) => {
+        if (!reserva || typeof reserva !== "object") {
+          console.warn("Reserva inválida (no es objeto):", reserva)
+          return false
+        }
 
-      console.log("✅ Hook: Reservas obtenidas:", {
-        reservasCount: reservas?.length || 0,
-        total: count,
-        totalPages,
-        currentPage: page,
+        if (!reserva.id || !reserva.estado) {
+          console.warn("Reserva sin ID o estado:", reserva)
+          return false
+        }
+
+        return true
       })
 
       setData({
-        reservas: reservas || [],
-        total: count || 0,
-        totalPages,
-        currentPage: page,
+        reservas: validReservas,
+        pagination: result.pagination || {
+          page: currentPage,
+          limit: 10,
+          total: validReservas.length,
+          totalPages: 1,
+          hasNext: false,
+          hasPrev: false,
+        },
       })
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido"
-      console.error("❌ Hook: Error en fetchReservas:", errorMessage)
-      setError(errorMessage)
-      setData({
-        reservas: [],
-        total: 0,
-        totalPages: 0,
-        currentPage: 1,
-      })
+      console.error("Error fetching reservas:", err)
+      setError(err instanceof Error ? err.message : "Error desconocido")
+      setData(null)
     } finally {
       setLoading(false)
     }
-  }
-
-  const eliminarReserva = async (id: number) => {
-    try {
-      console.log("🗑️ Hook: Eliminando reserva:", id)
-
-      const { error } = await supabaseAdmin.from("reservas").delete().eq("id", id)
-
-      if (error) {
-        console.error("❌ Hook: Error al eliminar reserva:", error)
-        throw new Error("Error al eliminar reserva: " + error.message)
-      }
-
-      console.log("✅ Hook: Reserva eliminada exitosamente")
-      await fetchReservas() // Refrescar la lista
-      return true
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido"
-      console.error("❌ Hook: Error en eliminarReserva:", errorMessage)
-      throw new Error(errorMessage)
-    }
-  }
-
-  const actualizarEstadoReserva = async (id: number, nuevoEstado: string) => {
-    try {
-      console.log("📝 Hook: Actualizando estado de reserva:", { id, nuevoEstado })
-
-      const { error } = await supabaseAdmin.from("reservas").update({ estado: nuevoEstado }).eq("id", id)
-
-      if (error) {
-        console.error("❌ Hook: Error al actualizar estado:", error)
-        throw new Error("Error al actualizar estado: " + error.message)
-      }
-
-      console.log("✅ Hook: Estado actualizado exitosamente")
-      await fetchReservas() // Refrescar la lista
-      return true
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido"
-      console.error("❌ Hook: Error en actualizarEstadoReserva:", errorMessage)
-      throw new Error(errorMessage)
-    }
-  }
+  }, [currentPage, filters])
 
   useEffect(() => {
     fetchReservas()
-  }, [page, limit, estado, search])
+  }, [fetchReservas])
+
+  const updateFilters = useCallback((newFilters: Filters) => {
+    setFilters(newFilters)
+    setCurrentPage(1) // Reset to first page when filters change
+  }, [])
+
+  const changePage = useCallback((page: number) => {
+    setCurrentPage(page)
+  }, [])
+
+  const refetch = useCallback(() => {
+    fetchReservas()
+  }, [fetchReservas])
 
   return {
-    reservas: data.reservas,
-    total: data.total,
-    totalPages: data.totalPages,
-    currentPage: data.currentPage,
+    data,
     loading,
     error,
-    refetch: fetchReservas,
-    eliminarReserva,
-    actualizarEstadoReserva,
+    filters,
+    updateFilters,
+    changePage,
+    refetch,
   }
 }

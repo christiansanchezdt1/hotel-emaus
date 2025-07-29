@@ -1,21 +1,37 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = "https://nmdvilutbmkksaoxulvk.supabase.co"
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZHZpbHV0Ym1ra3Nhb3h1bHZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTA1MDEsImV4cCI6MjA2NzQ4NjUwMX0.oQL1zc8_lvZUjzSIUVHFZObVMweDhWSEuZ8-jIe-pnA"
+// Configuración de Supabase con credenciales correctas
+const supabaseUrl = "https://lajeagediejmbkdlqdon.supabase.co"
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhamVhZ2VkaWVqbWJrZGxxZG9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5MTA1ODMsImV4cCI6MjA2NzQ4NjU4M30.anOwuRFBK9HRcDAFgFUeoxITSPJEaVfxOJSGk7TiNCo"
 
-// Cliente público para el frontend
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+console.log("🔧 Configurando Supabase...")
+console.log("📡 URL:", supabaseUrl)
+console.log("🔑 Key (primeros 20 chars):", supabaseKey.substring(0, 20) + "...")
 
-// Cliente admin para API routes (usando la misma clave anónima)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey, {
+if (!supabaseUrl || !supabaseKey) {
+  console.error("❌ Supabase configuration missing:", {
+    url: !!supabaseUrl,
+    key: !!supabaseKey,
+    env: process.env.NODE_ENV,
+  })
+  throw new Error("Missing Supabase environment variables")
+}
+
+// Cliente público para operaciones generales
+export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 })
 
-// Tipos de la base de datos
+console.log("✅ Supabase client initialized:", {
+  url: supabaseUrl.substring(0, 30) + "...",
+  hasKey: !!supabaseKey,
+  keyLength: supabaseKey.length,
+})
+
+// Tipos de base de datos
 export interface Database {
   public: {
     Tables: {
@@ -24,34 +40,34 @@ export interface Database {
           id: number
           numero: string
           tipo: string
-          precio: number
           capacidad: number
+          precio: number
           descripcion: string | null
           amenidades: string[] | null
+          disponible: boolean
           estado: string
           created_at: string
+          updated_at: string
         }
         Insert: {
-          id?: number
           numero: string
           tipo: string
-          precio: number
           capacidad: number
+          precio: number
           descripcion?: string | null
           amenidades?: string[] | null
+          disponible?: boolean
           estado?: string
-          created_at?: string
         }
         Update: {
-          id?: number
           numero?: string
           tipo?: string
-          precio?: number
           capacidad?: number
+          precio?: number
           descripcion?: string | null
           amenidades?: string[] | null
+          disponible?: boolean
           estado?: string
-          created_at?: string
         }
       }
       reservas: {
@@ -61,69 +77,56 @@ export interface Database {
           cliente_nombre: string
           cliente_email: string
           cliente_telefono: string | null
-          cliente_documento: string | null
-          tipo_documento: string | null
-          nacionalidad: string | null
+          cliente_documento: string
+          tipo_documento: string
+          nacionalidad: string
           fecha_checkin: string
           fecha_checkout: string
-          estado: string
           total: number
+          estado: string
+          notas: string | null
           created_at: string
+          updated_at: string
         }
         Insert: {
-          id?: number
           habitacion_id: number
           cliente_nombre: string
           cliente_email: string
           cliente_telefono?: string | null
-          cliente_documento?: string | null
-          tipo_documento?: string | null
-          nacionalidad?: string | null
+          cliente_documento: string
+          tipo_documento: string
+          nacionalidad: string
           fecha_checkin: string
           fecha_checkout: string
-          estado?: string
           total: number
-          created_at?: string
+          estado?: string
+          notas?: string | null
         }
         Update: {
-          id?: number
           habitacion_id?: number
           cliente_nombre?: string
           cliente_email?: string
           cliente_telefono?: string | null
-          cliente_documento?: string | null
-          tipo_documento?: string | null
-          nacionalidad?: string | null
+          cliente_documento?: string
+          tipo_documento?: string
+          nacionalidad?: string
           fecha_checkin?: string
           fecha_checkout?: string
-          estado?: string
           total?: number
-          created_at?: string
-        }
-      }
-      admin_users: {
-        Row: {
-          id: number
-          username: string
-          password_hash: string
-          email: string
-          created_at: string
-        }
-        Insert: {
-          id?: number
-          username: string
-          password_hash: string
-          email: string
-          created_at?: string
-        }
-        Update: {
-          id?: number
-          username?: string
-          password_hash?: string
-          email?: string
-          created_at?: string
+          estado?: string
+          notas?: string | null
         }
       }
     }
   }
+}
+
+// Helper para crear cliente específico
+export function createSupabaseClient() {
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
 }

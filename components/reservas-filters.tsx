@@ -1,180 +1,163 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Filter, X, Calendar } from "lucide-react"
-import type { ReservasFilters } from "@/hooks/use-reservas-admin"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ChevronDown, ChevronUp, X, Filter, Search } from "lucide-react"
 
-interface ReservasFiltersProps {
-  filters: ReservasFilters
-  onFiltersChange: (filters: Partial<ReservasFilters>) => void
-  stats?: {
-    total: number
-    confirmadas: number
-    checkin: number
-    checkout: number
-    canceladas: number
-  }
+interface Filters {
+  search: string
+  estado: string
+  fecha_desde: string
+  fecha_hasta: string
+  habitacion_tipo: string
 }
 
-export function ReservasFiltersComponent({ filters, onFiltersChange, stats }: ReservasFiltersProps) {
-  const [searchInput, setSearchInput] = useState(filters.search)
+interface ReservasFiltersProps {
+  filters: Filters
+  onFiltersChange: (filters: Filters) => void
+}
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onFiltersChange({ search: searchInput })
+export function ReservasFiltersComponent({ filters, onFiltersChange }: ReservasFiltersProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  const handleFilterChange = (key: keyof Filters, value: string) => {
+    onFiltersChange({
+      ...filters,
+      [key]: value,
+    })
   }
 
   const clearFilters = () => {
-    setSearchInput("")
-    onFiltersChange({ estado: "todas", tipo: "todos", fecha: "", search: "" })
+    onFiltersChange({
+      search: "",
+      estado: "",
+      fecha_desde: "",
+      fecha_hasta: "",
+      habitacion_tipo: "",
+    })
   }
 
-  const hasActiveFilters =
-    filters.estado !== "todas" || filters.tipo !== "todos" || filters.fecha !== "" || filters.search !== ""
-
-  const estadoOptions = [
-    { value: "todas", label: "Todas", count: stats?.total || 0, icon: "📋" },
-    { value: "confirmada", label: "Confirmadas", count: stats?.confirmadas || 0, icon: "📅" },
-    { value: "checkin", label: "Check-in", count: stats?.checkin || 0, icon: "🏨" },
-    { value: "checkout", label: "Check-out", count: stats?.checkout || 0, icon: "✅" },
-    { value: "cancelada", label: "Canceladas", count: stats?.canceladas || 0, icon: "❌" },
-  ]
-
-  const tipoOptions = [
-    { value: "todos", label: "Todos los tipos" },
-    { value: "Individual", label: "Individual" },
-    { value: "Doble", label: "Doble" },
-    { value: "Suite Familiar", label: "Suite Familiar" },
-    { value: "Suite Premium", label: "Suite Premium" },
-  ]
+  const activeFiltersCount = Object.values(filters).filter(Boolean).length
 
   return (
     <div className="space-y-4">
-      {/* Filtros rápidos por estado */}
-      <div className="flex flex-wrap gap-2">
-        {estadoOptions.map((option) => (
-          <Badge
-            key={option.value}
-            variant={filters.estado === option.value ? "default" : "outline"}
-            className={`cursor-pointer hover:bg-opacity-80 transition-colors ${
-              filters.estado === option.value ? "bg-blue-600 text-white hover:bg-blue-700" : "hover:bg-gray-100"
-            }`}
-            onClick={() => onFiltersChange({ estado: option.value })}
-          >
-            {option.icon} {option.label} ({option.count})
-          </Badge>
-        ))}
-      </div>
-
-      {/* Filtros avanzados */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Búsqueda */}
-        <form onSubmit={handleSearchSubmit} className="lg:col-span-2">
+      {/* Búsqueda principal */}
+      <div className="flex gap-4">
+        <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Buscar por cliente, email o habitación..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-10 pr-10"
+              placeholder="Buscar por nombre, email o documento..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange("search", e.target.value)}
+              className="pl-10 border-amber-200 focus:border-amber-400"
             />
-            {searchInput && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                onClick={() => {
-                  setSearchInput("")
-                  onFiltersChange({ search: "" })
-                }}
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            )}
           </div>
-        </form>
-
-        {/* Filtro por tipo de habitación */}
-        <Select value={filters.tipo} onValueChange={(value) => onFiltersChange({ tipo: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Tipo de habitación" />
-          </SelectTrigger>
-          <SelectContent>
-            {tipoOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Filtro por fecha */}
-        <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            type="date"
-            value={filters.fecha}
-            onChange={(e) => onFiltersChange({ fecha: e.target.value })}
-            className="pl-10"
-            placeholder="Filtrar por fecha"
-          />
         </div>
-      </div>
-
-      {/* Botón limpiar filtros y filtros activos */}
-      <div className="flex flex-wrap items-center gap-2">
-        {hasActiveFilters && (
-          <Button variant="outline" onClick={clearFilters} size="sm" className="bg-transparent">
-            <Filter className="w-4 h-4 mr-2" />
-            Limpiar Filtros
+        <Button
+          variant="outline"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="border-amber-200 hover:bg-amber-50 text-amber-700"
+        >
+          <Filter className="mr-2 h-4 w-4" />
+          Filtros
+          {activeFiltersCount > 0 && (
+            <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800">
+              {activeFiltersCount}
+            </Badge>
+          )}
+          {isExpanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+        </Button>
+        {activeFiltersCount > 0 && (
+          <Button variant="ghost" onClick={clearFilters} className="text-amber-600 hover:text-amber-700">
+            <X className="mr-1 h-3 w-3" />
+            Limpiar
           </Button>
         )}
-
-        {/* Indicadores de filtros activos */}
-        {filters.estado !== "todas" && (
-          <Badge variant="secondary" className="flex items-center space-x-1">
-            <span>Estado: {estadoOptions.find((o) => o.value === filters.estado)?.label}</span>
-            <X
-              className="w-3 h-3 cursor-pointer hover:text-red-500"
-              onClick={() => onFiltersChange({ estado: "todas" })}
-            />
-          </Badge>
-        )}
-        {filters.tipo !== "todos" && (
-          <Badge variant="secondary" className="flex items-center space-x-1">
-            <span>Tipo: {filters.tipo}</span>
-            <X
-              className="w-3 h-3 cursor-pointer hover:text-red-500"
-              onClick={() => onFiltersChange({ tipo: "todos" })}
-            />
-          </Badge>
-        )}
-        {filters.fecha && (
-          <Badge variant="secondary" className="flex items-center space-x-1">
-            <span>Fecha: {new Date(filters.fecha).toLocaleDateString("es-ES")}</span>
-            <X className="w-3 h-3 cursor-pointer hover:text-red-500" onClick={() => onFiltersChange({ fecha: "" })} />
-          </Badge>
-        )}
-        {filters.search && (
-          <Badge variant="secondary" className="flex items-center space-x-1">
-            <span>Búsqueda: "{filters.search}"</span>
-            <X
-              className="w-3 h-3 cursor-pointer hover:text-red-500"
-              onClick={() => {
-                setSearchInput("")
-                onFiltersChange({ search: "" })
-              }}
-            />
-          </Badge>
-        )}
       </div>
+
+      {/* Filtros expandibles */}
+      {isExpanded && (
+        <Card className="border-amber-200">
+          <CardContent className="p-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="estado" className="text-amber-900">
+                  Estado
+                </Label>
+                <Select value={filters.estado} onValueChange={(value) => handleFilterChange("estado", value)}>
+                  <SelectTrigger className="border-amber-200 focus:border-amber-400">
+                    <SelectValue placeholder="Todos los estados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    <SelectItem value="pendiente">Pendiente</SelectItem>
+                    <SelectItem value="confirmada">Confirmada</SelectItem>
+                    <SelectItem value="checkin">Check-in</SelectItem>
+                    <SelectItem value="checkout">Check-out</SelectItem>
+                    <SelectItem value="cancelada">Cancelada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fecha_desde" className="text-amber-900">
+                  Desde
+                </Label>
+                <Input
+                  id="fecha_desde"
+                  type="date"
+                  value={filters.fecha_desde}
+                  onChange={(e) => handleFilterChange("fecha_desde", e.target.value)}
+                  className="border-amber-200 focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fecha_hasta" className="text-amber-900">
+                  Hasta
+                </Label>
+                <Input
+                  id="fecha_hasta"
+                  type="date"
+                  value={filters.fecha_hasta}
+                  onChange={(e) => handleFilterChange("fecha_hasta", e.target.value)}
+                  className="border-amber-200 focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="habitacion_tipo" className="text-amber-900">
+                  Tipo de Habitación
+                </Label>
+                <Select
+                  value={filters.habitacion_tipo}
+                  onValueChange={(value) => handleFilterChange("habitacion_tipo", value)}
+                >
+                  <SelectTrigger className="border-amber-200 focus:border-amber-400">
+                    <SelectValue placeholder="Todos los tipos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    <SelectItem value="Simple">Simple</SelectItem>
+                    <SelectItem value="Doble">Doble</SelectItem>
+                    <SelectItem value="Triple">Triple</SelectItem>
+                    <SelectItem value="Cuádruple">Cuádruple</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
+
+// Export adicional para compatibilidad
+export { ReservasFiltersComponent as ReservasFilters }

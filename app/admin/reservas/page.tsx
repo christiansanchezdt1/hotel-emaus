@@ -1,388 +1,336 @@
 "use client"
-
-import type React from "react"
-
-import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useReservasAdmin } from "@/hooks/use-reservas-admin"
-import { ReservasFilters } from "@/components/reservas-filters"
+import { ReservasFiltersComponent } from "@/components/reservas-filters"
 import { Pagination } from "@/components/pagination"
 import { DeleteReservaButton } from "@/components/delete-reserva-button"
 import { LogoutButton } from "@/components/logout-button"
+import { AdminQuickLinks } from "@/components/admin-quick-links"
 import {
   Plus,
   Search,
   Calendar,
-  User,
-  Bed,
+  Users,
   DollarSign,
-  AlertCircle,
   RefreshCw,
-  FileText,
+  Edit,
   Phone,
   Mail,
+  User,
+  CreditCard,
+  MapPin,
+  Clock,
+  FileText,
 } from "lucide-react"
 import Link from "next/link"
 
-interface Reserva {
-  id: number
-  cliente_nombre: string
-  cliente_email: string | null
-  cliente_telefono: string | null
-  cliente_documento: string | null
-  tipo_documento: string | null
-  habitacion_id: number
-  habitacion_numero: string
-  habitacion_tipo: string
-  fecha_checkin: string
-  fecha_checkout: string
-  precio_total: number
-  estado: string
-  notas: string | null
-  created_at: string
-}
-
-interface ReservasData {
-  reservas: Reserva[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
+const estadoColors = {
+  pendiente: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  confirmada: "bg-blue-100 text-blue-800 border-blue-200",
+  checkin: "bg-green-100 text-green-800 border-green-200",
+  checkout: "bg-gray-100 text-gray-800 border-gray-200",
+  cancelada: "bg-red-100 text-red-800 border-red-200",
 }
 
 export default function AdminReservasPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filters, setFilters] = useState({
-    estado: "",
-    fecha_desde: "",
-    fecha_hasta: "",
-    habitacion_tipo: "",
-  })
-  const [currentPage, setCurrentPage] = useState(1)
+  const { data, loading, error, filters, updateFilters, changePage, refetch } = useReservasAdmin()
 
-  const { data, loading, error, refetch } = useReservasAdmin({
-    page: currentPage,
-    search: searchTerm,
-    ...filters,
-  })
-
-  // Asegurar que data tenga valores por defecto
-  const reservas = data?.reservas || []
-  const pagination = data?.pagination || {
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  }
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setCurrentPage(1)
+  const handleReservaDeleted = () => {
+    console.log("Reserva eliminada, refrescando datos...")
     refetch()
   }
 
-  const handleFilterChange = (newFilters: typeof filters) => {
-    setFilters(newFilters)
-    setCurrentPage(1)
-  }
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page)
-  }
-
-  const getEstadoBadge = (estado: string) => {
-    const variants = {
-      pendiente: "secondary",
-      confirmada: "default",
-      checkin: "success",
-      checkout: "outline",
-      cancelada: "destructive",
-    } as const
-
-    return (
-      <Badge variant={variants[estado as keyof typeof variants] || "secondary"}>
-        {estado.charAt(0).toUpperCase() + estado.slice(1)}
-      </Badge>
-    )
-  }
-
-  const formatPrice = (price: number) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "ARS",
-    }).format(price)
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-AR")
+    return new Date(dateString).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
   }
 
-  // Calcular estadísticas
-  const stats = {
-    total: reservas.length,
-    confirmadas: reservas.filter((r) => r.estado === "confirmada").length,
-    checkin: reservas.filter((r) => r.estado === "checkin").length,
-    pendientes: reservas.filter((r) => r.estado === "pendiente").length,
-    ingresoTotal: reservas.filter((r) => r.estado !== "cancelada").reduce((sum, r) => sum + r.precio_total, 0),
-  }
-
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-24" />
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-32" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between p-4 border rounded">
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-3 w-32" />
-                  </div>
-                  <Skeleton className="h-6 w-20" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>Error al cargar reservas: {error}</span>
-            <Button variant="outline" size="sm" onClick={refetch} className="ml-4 bg-transparent">
-              <RefreshCw className="h-4 w-4 mr-2" />
+      <div className="min-h-screen bg-gradient-to-br from-amber-100 via-orange-50 to-yellow-100 flex items-center justify-center">
+        <Card className="max-w-md w-full bg-white/90 backdrop-blur-sm border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button onClick={() => window.location.reload()} className="w-full bg-amber-700 hover:bg-amber-800">
+              <RefreshCw className="w-4 h-4 mr-2" />
               Reintentar
             </Button>
-          </AlertDescription>
-        </Alert>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
+  const reservas = data?.reservas || []
+  const pagination = data?.pagination
+
+  // Calcular estadísticas
+  const stats = {
+    total: pagination?.total || 0,
+    confirmadas: reservas.filter((r) => r.estado === "confirmada").length,
+    checkin: reservas.filter((r) => r.estado === "checkin").length,
+    ingresos: reservas.filter((r) => r.estado !== "cancelada").reduce((sum, r) => sum + (r.total || 0), 0),
+  }
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-amber-100 via-orange-50 to-yellow-100">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Gestión de Reservas</h1>
-          <p className="text-muted-foreground">Administra todas las reservas del hostel</p>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/admin/reservas/nueva">
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva Reserva
-            </Link>
-          </Button>
-          <LogoutButton />
-        </div>
-      </div>
-
-      {/* Estadísticas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Reservas</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Confirmadas</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.confirmadas}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Check-in</CardTitle>
-            <Bed className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.checkin}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatPrice(stats.ingresoTotal)}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtros y Búsqueda */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros y Búsqueda</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <div className="flex-1">
-                <Input
-                  placeholder="Buscar por nombre, email, teléfono o documento..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+      <header className="bg-amber-900/95 backdrop-blur-sm shadow-sm border-b border-amber-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white">Gestión de Reservas</h1>
+                <p className="text-sm text-amber-100">Administra todas las reservas del hotel</p>
               </div>
-              <Button type="submit">
-                <Search className="mr-2 h-4 w-4" />
-                Buscar
-              </Button>
-            </form>
-
-            <ReservasFilters filters={filters} onFiltersChange={handleFilterChange} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Lista de Reservas */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Reservas ({pagination.total})</CardTitle>
-          <CardDescription>
-            Mostrando {reservas.length} de {pagination.total} reservas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {reservas.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No se encontraron reservas</h3>
-              <p className="text-muted-foreground mb-4">
-                {searchTerm || Object.values(filters).some(Boolean)
-                  ? "Intenta ajustar los filtros de búsqueda"
-                  : "Aún no hay reservas registradas"}
-              </p>
-              <Button asChild>
+            </div>
+            <div className="flex gap-2">
+              <Button asChild className="bg-amber-700 hover:bg-amber-800">
                 <Link href="/admin/reservas/nueva">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Crear Primera Reserva
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nueva Reserva
                 </Link>
               </Button>
+              <LogoutButton />
             </div>
-          ) : (
-            <div className="space-y-4">
-              {reservas.map((reserva) => (
-                <div
-                  key={reserva.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
-                >
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <h3 className="font-semibold flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          {reserva.cliente_nombre}
-                        </h3>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          {reserva.cliente_email && (
-                            <span className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {reserva.cliente_email}
-                            </span>
-                          )}
-                          {reserva.cliente_telefono && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {reserva.cliente_telefono}
-                            </span>
-                          )}
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-5 h-5 text-amber-700" />
+                <div>
+                  <p className="text-sm text-amber-800">Total Reservas</p>
+                  <p className="text-2xl font-bold text-amber-900">{stats.total}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Users className="w-5 h-5 text-amber-700" />
+                <div>
+                  <p className="text-sm text-amber-800">Confirmadas</p>
+                  <p className="text-2xl font-bold text-blue-600">{stats.confirmadas}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-5 h-5 text-amber-700" />
+                <div>
+                  <p className="text-sm text-amber-800">Check-in</p>
+                  <p className="text-2xl font-bold text-green-600">{stats.checkin}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <DollarSign className="w-5 h-5 text-amber-700" />
+                <div>
+                  <p className="text-sm text-amber-800">Ingresos</p>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.ingresos)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card className="mb-6 bg-white/80 backdrop-blur-sm border-amber-200">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-amber-900">
+              <Search className="w-5 h-5" />
+              <span>Filtros de Búsqueda</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ReservasFiltersComponent filters={filters} onFiltersChange={updateFilters} />
+          </CardContent>
+        </Card>
+
+        {/* Reservas List */}
+        <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between text-amber-900">
+              <span>Lista de Reservas</span>
+              {loading && (
+                <div className="flex items-center space-x-2 text-sm text-amber-700">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Cargando...</span>
+                </div>
+              )}
+            </CardTitle>
+            <CardDescription className="text-amber-800">
+              {pagination && `Mostrando ${reservas.length} de ${pagination.total} reservas`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading && reservas.length === 0 ? (
+              <div className="text-center py-8">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-amber-600" />
+                <p className="text-amber-700">Cargando reservas...</p>
+              </div>
+            ) : reservas.length === 0 ? (
+              <div className="text-center py-8">
+                <Calendar className="w-8 h-8 mx-auto mb-4 text-amber-600" />
+                <p className="text-amber-700">No se encontraron reservas</p>
+                <p className="text-sm text-amber-600">Intenta ajustar los filtros de búsqueda</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reservas.map((reserva) => (
+                  <Card key={reserva.id} className="hover:shadow-lg transition-shadow bg-white/90 border-amber-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="bg-amber-100 p-2 rounded-full">
+                            <User className="w-5 h-5 text-amber-700" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-lg text-amber-900">{reserva.cliente_nombre}</h3>
+                            <p className="text-sm text-amber-700">Reserva #{reserva.id}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Badge
+                            className={
+                              estadoColors[reserva.estado as keyof typeof estadoColors] || estadoColors.pendiente
+                            }
+                          >
+                            {reserva.estado}
+                          </Badge>
+                          <div className="flex space-x-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              className="border-amber-200 hover:bg-amber-50 text-amber-700 bg-transparent"
+                            >
+                              <Link href={`/admin/reservas/${reserva.id}/editar`}>
+                                <Edit className="w-4 h-4" />
+                              </Link>
+                            </Button>
+                            <DeleteReservaButton reserva={reserva} onDeleted={handleReservaDeleted} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Mail className="w-4 h-4" />
+                            <span>{reserva.cliente_email}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Phone className="w-4 h-4" />
+                            <span>{reserva.cliente_telefono}</span>
+                          </div>
                           {reserva.cliente_documento && (
-                            <span className="flex items-center gap-1">
-                              <FileText className="h-3 w-3" />
-                              {reserva.tipo_documento}: {reserva.cliente_documento}
+                            <div className="flex items-center space-x-2 text-amber-800">
+                              <CreditCard className="w-4 h-4" />
+                              <span>
+                                {reserva.tipo_documento}: {reserva.cliente_documento}
+                              </span>
+                            </div>
+                          )}
+                          {reserva.nacionalidad && (
+                            <div className="flex items-center space-x-2 text-amber-800">
+                              <MapPin className="w-4 h-4" />
+                              <span>{reserva.nacionalidad}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Calendar className="w-4 h-4" />
+                            <span>Check-in: {formatDate(reserva.fecha_checkin)}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Calendar className="w-4 h-4" />
+                            <span>Check-out: {formatDate(reserva.fecha_checkout)}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Clock className="w-4 h-4" />
+                            <span>Creada: {formatDateTime(reserva.created_at)}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2 text-amber-800">
+                            <Users className="w-4 h-4" />
+                            <span>
+                              Habitación: {reserva.habitaciones?.numero} ({reserva.habitaciones?.tipo})
                             </span>
+                          </div>
+                          <div className="flex items-center space-x-2 text-green-600 font-semibold">
+                            <DollarSign className="w-4 h-4" />
+                            <span>Total: {formatCurrency(reserva.total)}</span>
+                          </div>
+                          {reserva.notas && (
+                            <div className="flex items-start space-x-2 text-amber-800">
+                              <FileText className="w-4 h-4 mt-0.5" />
+                              <span className="text-xs">{reserva.notas}</span>
+                            </div>
                           )}
                         </div>
                       </div>
-                    </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                    <div className="flex items-center gap-6 text-sm">
-                      <span className="flex items-center gap-1">
-                        <Bed className="h-4 w-4" />
-                        Habitación {reserva.habitacion_numero} ({reserva.habitacion_tipo})
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        {formatDate(reserva.fecha_checkin)} - {formatDate(reserva.fecha_checkout)}
-                      </span>
-                      <span className="flex items-center gap-1 font-semibold">
-                        <DollarSign className="h-4 w-4" />
-                        {formatPrice(reserva.precio_total)}
-                      </span>
-                    </div>
+        {/* Pagination */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="mt-6">
+            <Pagination currentPage={pagination.page} totalPages={pagination.totalPages} onPageChange={changePage} />
+          </div>
+        )}
 
-                    {reserva.notas && (
-                      <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
-                        <strong>Notas:</strong> {reserva.notas}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {getEstadoBadge(reserva.estado)}
-                    <DeleteReservaButton reservaId={reserva.id} onSuccess={refetch} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Paginación */}
-      {pagination.totalPages > 1 && (
-        <Pagination currentPage={pagination.page} totalPages={pagination.totalPages} onPageChange={handlePageChange} />
-      )}
+        {/* Enlaces Rápidos */}
+        <AdminQuickLinks currentPage="reservas" />
+      </div>
     </div>
   )
 }

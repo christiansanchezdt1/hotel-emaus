@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, Calendar, User, Mail, Phone, DollarSign, CreditCard } from "lucide-react"
+import { ArrowLeft, Calendar, User, Mail, Phone, DollarSign, CreditCard, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 interface Habitacion {
@@ -24,6 +24,7 @@ interface Habitacion {
 export default function NuevaReserva() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [loadingHabitaciones, setLoadingHabitaciones] = useState(false)
   const [error, setError] = useState("")
   const [habitaciones, setHabitaciones] = useState<Habitacion[]>([])
   const [formData, setFormData] = useState({
@@ -94,23 +95,74 @@ export default function NuevaReserva() {
 
   const documentoValidacion = validarDocumento(formData.cliente_documento, formData.tipo_documento)
 
-  // Cargar habitaciones disponibles
+  // Cargar habitaciones disponibles cuando cambien las fechas
   useEffect(() => {
-    const fetchHabitaciones = async () => {
+    const fetchHabitacionesDisponibles = async () => {
+      // Solo buscar si ambas fechas están seleccionadas
+      if (!formData.fecha_checkin || !formData.fecha_checkout) {
+        setHabitaciones([])
+        setFormData((prev) => ({ ...prev, habitacion_id: "", total: 0 }))
+        return
+      }
+
+      // Validar que checkout sea después de checkin
+      if (formData.fecha_checkout <= formData.fecha_checkin) {
+        setHabitaciones([])
+        setFormData((prev) => ({ ...prev, habitacion_id: "", total: 0 }))
+        return
+      }
+
       try {
-        const response = await fetch("/api/habitaciones-disponibles")
+        setLoadingHabitaciones(true)
+        setError("")
+
+        const params = new URLSearchParams({
+          checkin: formData.fecha_checkin,
+          checkout: formData.fecha_checkout,
+        })
+
+        console.log("🔍 Buscando habitaciones disponibles para:", {
+          checkin: formData.fecha_checkin,
+          checkout: formData.fecha_checkout,
+        })
+
+        const response = await fetch(`/api/habitaciones-disponibles?${params}`)
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: ${response.statusText}`)
+        }
+
         const data = await response.json()
-        setHabitaciones(data.habitaciones || [])
+        console.log("✅ Habitaciones disponibles encontradas:", data)
+
+        // Asegurar que habitaciones sea un array
+        const habitacionesArray = Array.isArray(data.habitaciones) ? data.habitaciones : data || []
+        setHabitaciones(habitacionesArray)
+
+        // Limpiar habitación seleccionada si ya no está disponible
+        if (formData.habitacion_id && habitacionesArray.length > 0) {
+          const habitacionDisponible = habitacionesArray.find(
+            (h: Habitacion) => h.id.toString() === formData.habitacion_id,
+          )
+          if (!habitacionDisponible) {
+            setFormData((prev) => ({ ...prev, habitacion_id: "", total: 0 }))
+          }
+        }
       } catch (error) {
-        console.error("Error loading habitaciones:", error)
+        console.error("❌ Error loading habitaciones:", error)
+        setError("Error al cargar habitaciones disponibles")
+        setHabitaciones([])
+      } finally {
+        setLoadingHabitaciones(false)
       }
     }
-    fetchHabitaciones()
-  }, [])
 
-  // Calcular total automáticamente
+    fetchHabitacionesDisponibles()
+  }, [formData.fecha_checkin, formData.fecha_checkout])
+
+  // Calcular total automáticamente - CORREGIDO: Verificar que habitaciones sea un array
   useEffect(() => {
-    if (formData.habitacion_id && formData.fecha_checkin && formData.fecha_checkout) {
+    if (formData.habitacion_id && formData.fecha_checkin && formData.fecha_checkout && Array.isArray(habitaciones)) {
       const habitacion = habitaciones.find((h) => h.id.toString() === formData.habitacion_id)
       if (habitacion) {
         const checkin = new Date(formData.fecha_checkin)
@@ -120,6 +172,8 @@ export default function NuevaReserva() {
           setFormData((prev) => ({ ...prev, total: habitacion.precio * noches }))
         }
       }
+    } else {
+      setFormData((prev) => ({ ...prev, total: 0 }))
     }
   }, [formData.habitacion_id, formData.fecha_checkin, formData.fecha_checkout, habitaciones])
 
@@ -169,29 +223,32 @@ export default function NuevaReserva() {
     if (formData.fecha_checkin && formData.fecha_checkout) {
       const checkin = new Date(formData.fecha_checkin)
       const checkout = new Date(formData.fecha_checkout)
-      const noches = Math.ceil((checkout.getTime() - checkin.getTime()) / (1000 * 3600 * 24))
+      const noches = Math.ceil((checkout.getTime() - checkin.getTime()) / (1000 * 60 * 60 * 24))
       return noches > 0 ? noches : 0
     }
     return 0
   }
 
-  const habitacionSeleccionada = habitaciones.find((h) => h.id.toString() === formData.habitacion_id)
+  // CORREGIDO: Verificar que habitaciones sea un array antes de usar find
+  const habitacionSeleccionada = Array.isArray(habitaciones)
+    ? habitaciones.find((h) => h.id.toString() === formData.habitacion_id)
+    : undefined
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-100 via-orange-50 to-yellow-100">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-amber-900/95 backdrop-blur-sm shadow-sm border-b border-amber-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center space-x-4 py-4">
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="border-amber-200 hover:bg-amber-100 bg-transparent">
               <Link href="/admin/reservas">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Volver
               </Link>
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Nueva Reserva</h1>
-              <p className="text-sm text-gray-600">Crear una nueva reserva de habitación</p>
+              <h1 className="text-2xl font-bold text-white">Nueva Reserva</h1>
+              <p className="text-sm text-amber-100">Crear una nueva reserva de habitación</p>
             </div>
           </div>
         </div>
@@ -201,9 +258,9 @@ export default function NuevaReserva() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Información del Cliente */}
-            <Card>
+            <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
+                <CardTitle className="flex items-center space-x-2 text-amber-900">
                   <User className="w-5 h-5" />
                   <span>Información del Cliente</span>
                 </CardTitle>
@@ -217,6 +274,7 @@ export default function NuevaReserva() {
                     onChange={(e) => handleInputChange("cliente_nombre", e.target.value)}
                     placeholder="Nombre del huésped"
                     required
+                    className="border-amber-200 focus:border-amber-400"
                   />
                 </div>
 
@@ -226,7 +284,7 @@ export default function NuevaReserva() {
                     value={formData.nacionalidad}
                     onValueChange={(value) => handleInputChange("nacionalidad", value)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="border-amber-200 focus:border-amber-400">
                       <SelectValue placeholder="Selecciona nacionalidad" />
                     </SelectTrigger>
                     <SelectContent>
@@ -258,7 +316,7 @@ export default function NuevaReserva() {
                       value={formData.tipo_documento}
                       onValueChange={(value) => handleInputChange("tipo_documento", value)}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="border-amber-200 focus:border-amber-400">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -276,7 +334,7 @@ export default function NuevaReserva() {
                         value={formData.cliente_documento}
                         onChange={(e) => handleInputChange("cliente_documento", e.target.value.toUpperCase())}
                         placeholder={formData.tipo_documento === "DNI" ? "12345678" : "ABC123456"}
-                        className={`pl-10 ${
+                        className={`pl-10 border-amber-200 focus:border-amber-400 ${
                           formData.cliente_documento && !documentoValidacion.valido
                             ? "border-red-300 focus:border-red-400"
                             : ""
@@ -300,7 +358,7 @@ export default function NuevaReserva() {
                       value={formData.cliente_email}
                       onChange={(e) => handleInputChange("cliente_email", e.target.value)}
                       placeholder="email@ejemplo.com"
-                      className="pl-10"
+                      className="pl-10 border-amber-200 focus:border-amber-400"
                       required
                     />
                   </div>
@@ -314,7 +372,7 @@ export default function NuevaReserva() {
                       value={formData.cliente_telefono}
                       onChange={(e) => handleInputChange("cliente_telefono", e.target.value)}
                       placeholder="+1234567890"
-                      className="pl-10"
+                      className="pl-10 border-amber-200 focus:border-amber-400"
                     />
                   </div>
                 </div>
@@ -322,39 +380,14 @@ export default function NuevaReserva() {
             </Card>
 
             {/* Información de la Reserva */}
-            <Card>
+            <Card className="bg-white/80 backdrop-blur-sm border-amber-200">
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
+                <CardTitle className="flex items-center space-x-2 text-amber-900">
                   <Calendar className="w-5 h-5" />
                   <span>Detalles de la Reserva</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="habitacion_id">Habitación *</Label>
-                  <Select
-                    value={formData.habitacion_id}
-                    onValueChange={(value) => handleInputChange("habitacion_id", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar habitación" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {habitaciones.map((habitacion) => (
-                        <SelectItem key={habitacion.id} value={habitacion.id.toString()}>
-                          #{habitacion.numero} - {habitacion.tipo} (
-                          {new Intl.NumberFormat("es-AR", {
-                            style: "currency",
-                            currency: "ARS",
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0,
-                          }).format(habitacion.precio)}
-                          /noche)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="fecha_checkin">Check-in *</Label>
@@ -364,6 +397,7 @@ export default function NuevaReserva() {
                       value={formData.fecha_checkin}
                       onChange={(e) => handleInputChange("fecha_checkin", e.target.value)}
                       min={new Date().toISOString().split("T")[0]}
+                      className="border-amber-200 focus:border-amber-400"
                       required
                     />
                   </div>
@@ -375,14 +409,75 @@ export default function NuevaReserva() {
                       value={formData.fecha_checkout}
                       onChange={(e) => handleInputChange("fecha_checkout", e.target.value)}
                       min={formData.fecha_checkin || new Date().toISOString().split("T")[0]}
+                      className="border-amber-200 focus:border-amber-400"
                       required
                     />
                   </div>
                 </div>
+
+                <div>
+                  <Label htmlFor="habitacion_id">Habitación *</Label>
+                  <Select
+                    value={formData.habitacion_id}
+                    onValueChange={(value) => handleInputChange("habitacion_id", value)}
+                    disabled={!formData.fecha_checkin || !formData.fecha_checkout || loadingHabitaciones}
+                  >
+                    <SelectTrigger className="border-amber-200 focus:border-amber-400">
+                      <SelectValue
+                        placeholder={
+                          !formData.fecha_checkin || !formData.fecha_checkout
+                            ? "Primero selecciona las fechas"
+                            : loadingHabitaciones
+                              ? "Buscando habitaciones..."
+                              : !Array.isArray(habitaciones) || habitaciones.length === 0
+                                ? "No hay habitaciones disponibles"
+                                : "Seleccionar habitación"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingHabitaciones ? (
+                        <SelectItem value="loading" disabled>
+                          <div className="flex items-center space-x-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Buscando habitaciones...</span>
+                          </div>
+                        </SelectItem>
+                      ) : !Array.isArray(habitaciones) || habitaciones.length === 0 ? (
+                        <SelectItem value="no-rooms" disabled>
+                          No hay habitaciones disponibles para estas fechas
+                        </SelectItem>
+                      ) : (
+                        habitaciones.map((habitacion) => (
+                          <SelectItem key={habitacion.id} value={habitacion.id.toString()}>
+                            #{habitacion.numero} - {habitacion.tipo} (
+                            {new Intl.NumberFormat("es-AR", {
+                              style: "currency",
+                              currency: "ARS",
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            }).format(habitacion.precio)}
+                            /noche)
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {formData.fecha_checkin &&
+                    formData.fecha_checkout &&
+                    !loadingHabitaciones &&
+                    Array.isArray(habitaciones) && (
+                      <p className="text-sm text-amber-700 mt-1">
+                        {habitaciones.length} habitación{habitaciones.length !== 1 ? "es" : ""} disponible
+                        {habitaciones.length !== 1 ? "s" : ""} para estas fechas
+                      </p>
+                    )}
+                </div>
+
                 <div>
                   <Label htmlFor="estado">Estado</Label>
                   <Select value={formData.estado} onValueChange={(value) => handleInputChange("estado", value)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="border-amber-200 focus:border-amber-400">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -399,7 +494,7 @@ export default function NuevaReserva() {
 
           {/* Resumen */}
           {habitacionSeleccionada && formData.fecha_checkin && formData.fecha_checkout && (
-            <Card className="border-green-200 bg-green-50">
+            <Card className="border-green-200 bg-green-50/80 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-green-800">
                   <DollarSign className="w-5 h-5" />
@@ -462,10 +557,19 @@ export default function NuevaReserva() {
           )}
 
           <div className="flex space-x-4">
-            <Button type="submit" disabled={loading || !documentoValidacion.valido} className="flex-1">
+            <Button
+              type="submit"
+              disabled={loading || !documentoValidacion.valido || !formData.habitacion_id}
+              className="flex-1 bg-amber-700 hover:bg-amber-800"
+            >
               {loading ? "Creando..." : "Crear Reserva"}
             </Button>
-            <Button type="button" variant="outline" asChild>
+            <Button
+              type="button"
+              variant="outline"
+              asChild
+              className="border-amber-200 hover:bg-amber-100 bg-transparent"
+            >
               <Link href="/admin/reservas">Cancelar</Link>
             </Button>
           </div>

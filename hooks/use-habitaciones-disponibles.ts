@@ -2,89 +2,115 @@
 
 import { useState, useEffect } from "react"
 
-interface Habitacion {
+export interface Habitacion {
   id: number
   numero: string
   tipo: string
-  precio: number
   capacidad: number
-  descripcion: string | null
-  amenidades: string[] | null
+  precio: number
+  descripcion: string
+  amenidades: string[]
+  imagen_url: string
   estado: string
-  created_at: string
 }
 
-interface HabitacionesResponse {
+export interface HabitacionesResponse {
   habitaciones: Habitacion[]
   total: number
-  mensaje?: string
-  error?: string
-  warning?: string
+  filtros: {
+    fechaInicio: string | null
+    fechaFin: string | null
+    tipo: string | null
+    capacidad: string | null
+  }
 }
 
-export function useHabitacionesDisponibles(fecha?: string) {
-  const [habitaciones, setHabitaciones] = useState<Habitacion[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+export interface UseHabitacionesDisponiblesOptions {
+  fechaInicio?: string
+  fechaFin?: string
+  tipo?: string
+  capacidad?: string
+  autoFetch?: boolean
+}
+
+export function useHabitacionesDisponibles(options: UseHabitacionesDisponiblesOptions = {}) {
+  const [data, setData] = useState<HabitacionesResponse | null>(null)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [mensaje, setMensaje] = useState<string | null>(null)
-  const [warning, setWarning] = useState<string | null>(null)
-  const [total, setTotal] = useState(0)
 
-  const fetchHabitaciones = async (fechaConsulta?: string) => {
-    setIsLoading(true)
-    setError(null)
-    setWarning(null)
-
+  const fetchHabitaciones = async (params?: UseHabitacionesDisponiblesOptions) => {
     try {
-      console.log("🔍 Hook: Consultando habitaciones disponibles", { fecha: fechaConsulta })
+      setLoading(true)
+      setError(null)
 
-      const url = fechaConsulta
-        ? `/api/habitaciones-disponibles?fecha=${encodeURIComponent(fechaConsulta)}`
-        : "/api/habitaciones-disponibles"
+      const searchParams = new URLSearchParams()
 
-      const response = await fetch(url)
+      const finalParams = { ...options, ...params }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      if (finalParams.fechaInicio) searchParams.set("fechaInicio", finalParams.fechaInicio)
+      if (finalParams.fechaFin) searchParams.set("fechaFin", finalParams.fechaFin)
+      if (finalParams.tipo) searchParams.set("tipo", finalParams.tipo)
+      if (finalParams.capacidad) searchParams.set("capacidad", finalParams.capacidad)
 
-      const data: HabitacionesResponse = await response.json()
-      console.log("✅ Hook: Respuesta recibida:", {
-        habitaciones: data.habitaciones?.length || 0,
-        mensaje: data.mensaje,
-        error: data.error,
-        warning: data.warning,
+      console.log("🔍 Fetching habitaciones con parámetros:", finalParams)
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 segundos timeout
+
+      const response = await fetch(`/api/habitaciones-disponibles?${searchParams.toString()}`, {
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
 
-      if (data.error) {
-        setError(data.error)
-        setHabitaciones([])
-      } else {
-        setHabitaciones(data.habitaciones || [])
-        setTotal(data.total || 0)
-        setMensaje(data.mensaje || null)
-        setWarning(data.warning || null)
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        let errorMessage = `Error ${response.status}: ${response.statusText}`
+
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+        } catch {
+          // Si no se puede parsear el JSON, usar el mensaje por defecto
+        }
+
+        throw new Error(errorMessage)
       }
-    } catch (err) {
-      console.error("❌ Hook: Error en fetchHabitaciones:", err)
-      setError(err instanceof Error ? err.message : "Error desconocido")
-      setHabitaciones([])
+
+      const result = await response.json()
+      console.log("✅ Habitaciones obtenidas:", result)
+
+      setData(result)
+      return result
+    } catch (err: any) {
+      const errorMessage =
+        err.name === "AbortError" ? "La consulta tardó demasiado tiempo" : err.message || "Error al cargar habitaciones"
+
+      console.error("❌ Error en useHabitacionesDisponibles:", errorMessage)
+      setError(errorMessage)
+      return null
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
+  // Auto-fetch en mount si está habilitado
   useEffect(() => {
-    fetchHabitaciones(fecha)
-  }, [fecha])
+    if (options.autoFetch !== false) {
+      fetchHabitaciones()
+    }
+  }, []) // Solo en mount
 
   return {
-    habitaciones,
-    isLoading,
+    data,
+    loading,
     error,
-    mensaje,
-    warning,
-    total,
     refetch: fetchHabitaciones,
+    habitaciones: data?.habitaciones || [],
+    total: data?.total || 0,
   }
 }
+
+export default useHabitacionesDisponibles

@@ -1,162 +1,132 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase"
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const fechaParam = searchParams.get("fecha")
+    console.log("🔍 Iniciando consulta de habitaciones disponibles...")
 
-    console.log("🔍 API: Iniciando consulta de habitaciones disponibles", { fechaParam })
+    const searchParams = request.nextUrl.searchParams
+    const fechaInicio = searchParams.get("fechaInicio")
+    const fechaFin = searchParams.get("fechaFin")
+    const tipo = searchParams.get("tipo")
+    const capacidad = searchParams.get("capacidad")
 
-    // Validar y formatear fecha si se proporciona
-    let fechaFormateada: string | null = null
-    if (fechaParam) {
-      try {
-        // Asegurar formato YYYY-MM-DD
-        const fechaObj = new Date(fechaParam)
-        if (isNaN(fechaObj.getTime())) {
-          throw new Error("Fecha inválida")
-        }
-        // Formatear como YYYY-MM-DD en UTC para evitar problemas de zona horaria
-        fechaFormateada = fechaObj.toISOString().split("T")[0]
-        console.log("📅 API: Fecha formateada:", fechaFormateada)
-      } catch (error) {
-        console.error("❌ API: Error al formatear fecha:", error)
-        return NextResponse.json({
-          habitaciones: [],
-          total: 0,
-          error: "Formato de fecha inválido. Use formato YYYY-MM-DD",
-        })
-      }
-    }
+    console.log("📅 Parámetros recibidos:", { fechaInicio, fechaFin, tipo, capacidad })
 
-    if (fechaFormateada) {
-      // Consulta con filtro de fecha - verificar disponibilidad
-      console.log("📅 API: Consultando disponibilidad para fecha específica:", fechaFormateada)
-
-      // Primero obtener todas las habitaciones disponibles
-      const { data: todasHabitaciones, error: errorHabitaciones } = await supabaseAdmin
-        .from("habitaciones")
-        .select("*")
-        .eq("estado", "disponible")
-        .order("numero")
-
-      if (errorHabitaciones) {
-        console.error("❌ API: Error al obtener habitaciones:", errorHabitaciones)
-        return NextResponse.json({
-          habitaciones: [],
-          total: 0,
-          error: "Error al consultar habitaciones en la base de datos",
-        })
-      }
-
-      console.log("🏨 API: Habitaciones encontradas:", todasHabitaciones?.length || 0)
-
-      if (!todasHabitaciones || todasHabitaciones.length === 0) {
-        return NextResponse.json({
-          habitaciones: [],
-          total: 0,
-          mensaje: "No hay habitaciones registradas en el sistema",
-        })
-      }
-
-      // Verificar cuáles están reservadas para la fecha específica
-      // Buscar reservas que se superpongan con la fecha consultada
-      const { data: reservas, error: errorReservas } = await supabaseAdmin
-        .from("reservas")
-        .select("habitacion_id, fecha_checkin, fecha_checkout, estado")
-        .lte("fecha_checkin", fechaFormateada)
-        .gte("fecha_checkout", fechaFormateada)
-        .in("estado", ["confirmada", "checkin"])
-
-      if (errorReservas) {
-        console.error("❌ API: Error al consultar reservas:", errorReservas)
-        // Si hay error en reservas, mostrar todas las habitaciones con advertencia
-        return NextResponse.json({
-          habitaciones: todasHabitaciones,
-          total: todasHabitaciones.length,
-          warning: "No se pudo verificar disponibilidad completa debido a un error en las reservas",
-        })
-      }
-
-      console.log("📋 API: Reservas encontradas para la fecha:", reservas?.length || 0)
-
-      // IDs de habitaciones reservadas
-      const habitacionesReservadas = new Set(reservas?.map((r) => r.habitacion_id) || [])
-
-      // Filtrar habitaciones disponibles
-      const habitacionesDisponibles = todasHabitaciones.filter(
-        (habitacion) => !habitacionesReservadas.has(habitacion.id),
-      )
-
-      console.log("✅ API: Habitaciones disponibles para la fecha:", habitacionesDisponibles.length)
-
-      // Formatear fecha para mostrar
-      const fechaFormateadaDisplay = new Date(fechaFormateada + "T12:00:00").toLocaleDateString("es-AR", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-
-      if (habitacionesDisponibles.length === 0) {
-        return NextResponse.json({
-          habitaciones: [],
-          total: todasHabitaciones.length,
-          mensaje: `Todas las habitaciones están reservadas para ${fechaFormateadaDisplay}`,
-        })
-      }
-
-      return NextResponse.json({
-        habitaciones: habitacionesDisponibles,
-        total: todasHabitaciones.length,
-        mensaje: `${habitacionesDisponibles.length} habitación${
-          habitacionesDisponibles.length !== 1 ? "es" : ""
-        } disponible${habitacionesDisponibles.length !== 1 ? "s" : ""} para ${fechaFormateadaDisplay}`,
-      })
-    } else {
-      // Consulta sin filtro de fecha - mostrar todas las habitaciones disponibles
-      console.log("🏨 API: Consultando todas las habitaciones disponibles")
-
-      const { data: habitaciones, error } = await supabaseAdmin
-        .from("habitaciones")
-        .select("*")
-        .eq("estado", "disponible")
-        .order("numero")
-
-      if (error) {
-        console.error("❌ API: Error al obtener habitaciones:", error)
-        return NextResponse.json({
-          habitaciones: [],
-          total: 0,
-          error: "Error al consultar habitaciones en la base de datos",
-        })
-      }
-
-      console.log("✅ API: Habitaciones disponibles encontradas:", habitaciones?.length || 0)
-
-      if (!habitaciones || habitaciones.length === 0) {
-        return NextResponse.json({
-          habitaciones: [],
-          total: 0,
-          mensaje: "No hay habitaciones registradas en el sistema",
-        })
-      }
-
-      return NextResponse.json({
-        habitaciones,
-        total: habitaciones.length,
-        mensaje: `${habitaciones.length} habitación${habitaciones.length !== 1 ? "es" : ""} disponible${
-          habitaciones.length !== 1 ? "s" : ""
-        }`,
-      })
-    }
-  } catch (error) {
-    console.error("❌ API: Error general:", error)
-    return NextResponse.json({
-      habitaciones: [],
-      total: 0,
-      error: "Error interno del servidor",
+    // Crear timeout para la consulta
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Timeout: La consulta tardó demasiado")), 10000)
     })
+
+    // Construir consulta base - CORREGIDO: usar "amenidades" en lugar de "servicios"
+    let query = supabase
+      .from("habitaciones")
+      .select("id, numero, tipo, capacidad, precio, descripcion, amenidades, estado")
+      .eq("estado", "disponible")
+
+    // Aplicar filtros opcionales
+    if (tipo && tipo !== "todos") {
+      query = query.eq("tipo", tipo)
+    }
+
+    if (capacidad && capacidad !== "todas") {
+      const capacidadNum = Number.parseInt(capacidad)
+      if (!isNaN(capacidadNum)) {
+        query = query.gte("capacidad", capacidadNum)
+      }
+    }
+
+    // Ejecutar consulta con timeout
+    const queryPromise = query.order("numero", { ascending: true })
+
+    console.log("⏳ Ejecutando consulta a Supabase...")
+    const { data: habitaciones, error } = (await Promise.race([queryPromise, timeoutPromise])) as any
+
+    if (error) {
+      console.error("❌ Error en consulta Supabase:", error)
+      return NextResponse.json(
+        {
+          error: "Error al consultar habitaciones",
+          details: error.message,
+          code: error.code,
+        },
+        { status: 500 },
+      )
+    }
+
+    console.log(`✅ Consulta exitosa. Encontradas ${habitaciones?.length || 0} habitaciones`)
+
+    // Si hay fechas, filtrar por disponibilidad
+    let habitacionesDisponibles = habitaciones || []
+
+    if (fechaInicio && fechaFin) {
+      console.log("🔍 Filtrando por disponibilidad de fechas...")
+
+      const { data: reservas, error: reservasError } = await supabase
+        .from("reservas")
+        .select("habitacion_id")
+        .or(`and(fecha_checkin.lte.${fechaFin},fecha_checkout.gte.${fechaInicio})`)
+        .in("estado", ["confirmada", "pendiente"])
+
+      if (reservasError) {
+        console.error("❌ Error al consultar reservas:", reservasError)
+      } else {
+        const habitacionesOcupadas = reservas?.map((r) => r.habitacion_id) || []
+        habitacionesDisponibles = habitaciones.filter((h) => !habitacionesOcupadas.includes(h.id))
+        console.log(`📊 Después del filtro de fechas: ${habitacionesDisponibles.length} habitaciones disponibles`)
+      }
+    }
+
+    // Procesar datos para el frontend
+    const habitacionesProcesadas = habitacionesDisponibles.map((habitacion) => {
+      // Procesar amenidades - puede venir como array JSON o string
+      let amenidadesProcesadas = []
+      if (habitacion.amenidades) {
+        if (Array.isArray(habitacion.amenidades)) {
+          amenidadesProcesadas = habitacion.amenidades
+        } else if (typeof habitacion.amenidades === "string") {
+          try {
+            amenidadesProcesadas = JSON.parse(habitacion.amenidades)
+          } catch {
+            // Si no se puede parsear, dividir por comas
+            amenidadesProcesadas = habitacion.amenidades.split(",").map((a: string) => a.trim())
+          }
+        }
+      }
+
+      // Mapear imagen por tipo
+      const tipoImagenes: Record<string, string> = {
+        simple: "/images/habitaciones/habitacion-simple-1.jpg",
+        doble: "/images/habitaciones/habitacion-doble-1.jpg",
+        triple: "/images/habitaciones/habitacion-doble-2.jpg",
+        suite: "/images/habitaciones/habitacion-doble-3.jpg",
+      }
+
+      return {
+        ...habitacion,
+        amenidades: amenidadesProcesadas,
+        precio: habitacion.precio || 0,
+        imagen_url: tipoImagenes[habitacion.tipo.toLowerCase()] || "/images/habitaciones/habitacion-simple-1.jpg",
+      }
+    })
+
+    console.log("✅ Respuesta preparada exitosamente")
+
+    return NextResponse.json({
+      habitaciones: habitacionesProcesadas,
+      total: habitacionesProcesadas.length,
+      filtros: { fechaInicio, fechaFin, tipo, capacidad },
+    })
+  } catch (error: any) {
+    console.error("💥 Error general en API:", error)
+
+    return NextResponse.json(
+      {
+        error: "Error interno del servidor",
+        message: error.message || "Error desconocido",
+        timestamp: new Date().toISOString(),
+      },
+      { status: 500 },
+    )
   }
 }
